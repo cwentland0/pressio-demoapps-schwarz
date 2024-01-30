@@ -4,7 +4,7 @@ set(DECOMPSRC ${CMAKE_CURRENT_SOURCE_DIR}/../meshing_scripts)
 
 # optional flags for limiting/expanding build
 set(TESTWENO3 TRUE)
-set(PARTESTS FALSE)
+option(PARTESTS "" OFF)
 
 # include demoapps headers and Schwarz routines
 include_directories(
@@ -15,8 +15,7 @@ include_directories(
 
 add_compile_definitions(PRESSIO_ENABLE_TPL_EIGEN PRESSIO_ENABLE_DEBUG_PRINT)
 
-link_libraries(stdc++fs)
-link_libraries(pthread)
+link_libraries(stdc++fs pthread)
 
 # ---------------------------------------------------------
 # 2d problems
@@ -33,6 +32,6 @@ add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms_schwarz)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_mixed_schwarz)
 
 # misc subdirectories
-if(${PARTESTS})
+if(PARTESTS)
   add_subdirectory(parallel)
 endif()

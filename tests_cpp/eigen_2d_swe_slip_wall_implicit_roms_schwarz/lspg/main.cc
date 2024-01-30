@@ -60,7 +60,7 @@ int main()
         obsVec[domIdx](::pressio::ode::StepCount(0), 0.0, *decomp.m_subdomainVec[domIdx]->getStateFull());
     }
 
-    RuntimeObserver obs_time("runtime.bin", (*tiling).count());
+    RuntimeObserver obs_time("runtime.bin");
 
     // solve
     const int numSteps = tf / decomp.m_dtMax;
@@ -70,7 +70,8 @@ int main()
         std::cout << "Step " << outerStep << std::endl;
 
         // compute contoller step until convergence
-        auto runtimeIter = decomp.calc_controller_step(
+        auto runtimeStart = std::chrono::high_resolution_clock::now();
+        auto numSubiters = decomp.calc_controller_step(
             pdas::SchwarzMode::Multiplicative,
             outerStep,
             time,
@@ -78,6 +79,9 @@ int main()
             abs_err_tol,
             convergeStepMax
         );
+        const auto runtimeEnd = std::chrono::high_resolution_clock::now();
+        const auto nsDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart);
+        const double secsElapsed = static_cast<double>(nsDuration.count()) * 1e-9;
 
         time += decomp.m_dtMax;
 
@@ -90,7 +94,7 @@ int main()
         }
 
         // runtime observer
-        obs_time(runtimeIter);
+        obs_time(secsElapsed, numSubiters);
 
     }
 
