@@ -60,13 +60,13 @@ int main(int argc, char *argv[])
 
     auto tiling = std::make_shared<pdas::Tiling>(meshRootFull);
     auto [meshObjsFull, meshPathsFull] = pdas::create_meshes(meshRootFull, tiling->count());
-    std::vector<std::string> meshPathsHyper;
+    std::vector<std::string> samplePaths;
     for (int domIdx = 0; domIdx < meshPathsFull.size(); ++ domIdx) {
-        meshPathsHyper.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx));
+        samplePaths.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx) + "/sample_mesh_gids.dat");
     }
     auto subdomains = pdas::create_subdomains<app_t>(
         meshObjsFull, *tiling, probId, schemeVec, orderVec,
-        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, meshPathsHyper);
+        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, samplePaths);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observers

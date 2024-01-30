@@ -497,7 +497,7 @@ public:
         const std::string & transRoot,
         const std::string & basisRoot,
         const int nmodes,
-        const std::string & meshPathHyper)
+        const std::string & sampleFile)
     : m_domIdx(domainIndex)
     , m_meshFull(&meshFull)
     , m_probId(probId)
@@ -511,7 +511,7 @@ public:
             BCFunctor<mesh_t>(bcLeft),  BCFunctor<mesh_t>(bcFront),
             BCFunctor<mesh_t>(bcRight), BCFunctor<mesh_t>(bcBack),
             icflag, userParams)))
-    , m_sampleFile(meshPathHyper + "/sample_mesh_gids.dat")
+    , m_sampleFile(sampleFile)
     , m_sampleGids(create_cell_gids_vector_and_fill_from_ascii(m_sampleFile))
     , m_nmodes(nmodes)
     , m_transFull(read_vector_from_binary<scalar_t>(transRoot + "_" + std::to_string(domainIndex) + ".bin"))
@@ -748,12 +748,12 @@ public:
         const std::string & transRoot,
         const std::string & basisRoot,
         const int nmodes,
-        const std::string & meshPathHyper)
+        const std::string & sampleFile)
     : base_t(domainIndex, meshFull,
              bcLeft, bcFront, bcRight, bcBack,
              probId, odeScheme, fluxOrder, icflag, userParams,
              transRoot, basisRoot, nmodes,
-             meshPathHyper)
+             sampleFile)
     {
         m_odeScheme = odeScheme;
     }
@@ -837,12 +837,12 @@ auto create_subdomains(
 
     // dummy arguments
     std::vector<int> nmodesVec(ndomains, -1);
-    std::vector<std::string> meshPathsHyper(ndomains, "");
+    std::vector<std::string> samplePaths(ndomains, "");
 
     return create_subdomains<app_t>(meshes, tiling,
         probId, odeSchemes, fluxOrders,
         domFlagVec, "", "", nmodesVec,
-        icFlag, meshPathsHyper, userParams);
+        icFlag, samplePaths, userParams);
 
 }
 
@@ -861,7 +861,7 @@ auto create_subdomains(
     const std::string & basisRoot,
     const std::vector<int> & nmodesVec,
     int icFlag = 0,
-    const std::vector<std::string> & meshPathsHyper = {},
+    const std::vector<std::string> & samplePaths = {},
     const std::unordered_map<std::string, typename app_t::scalar_type> & userParams = {})
 {
 
@@ -933,7 +933,7 @@ auto create_subdomains(
                 bcLeft, bcFront, bcRight, bcBack,
                 probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx],
-                meshPathsHyper[domIdx]));
+                samplePaths[domIdx]));
         }
         else {
             std::runtime_error("Invalid subdomain flag value: " + domFlagVec[domIdx]);
