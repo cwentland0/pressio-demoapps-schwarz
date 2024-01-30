@@ -17,13 +17,13 @@ int main()
     // problem definition
     const auto probId = pda::Swe2d::CustomBCs;
 #ifdef USE_WENO5
-    const auto order   = pda::InviscidFluxReconstruction::Weno5;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(4, pda::InviscidFluxReconstruction::Weno5);
 #elif defined USE_WENO3
-    const auto order   = pda::InviscidFluxReconstruction::Weno3;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(4, pda::InviscidFluxReconstruction::Weno3);
 #else
-    const auto order   = pda::InviscidFluxReconstruction::FirstOrder;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(4, pda::InviscidFluxReconstruction::FirstOrder);
 #endif
-    const auto scheme = pode::StepScheme::BDF1;
+    std::vector<pode::StepScheme> schemeVec(4, pode::StepScheme::BDF1);
     const int icFlag = 1;
     using app_t = pdas::swe2d_app_type;
 
@@ -41,7 +41,7 @@ int main()
     auto [meshObjs, meshPaths] = pdas::create_meshes(meshRoot, tiling->count());
     auto subdomains = pdas::create_subdomains<app_t>(
         meshObjs, *tiling,
-        probId, scheme, order, icFlag);
+        probId, schemeVec, orderVec, icFlag);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observer
