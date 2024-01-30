@@ -119,13 +119,13 @@ public:
         BCType bcRight, BCType bcBack,
         prob_t probId,
         pressio::ode::StepScheme odeScheme,
-        pda::InviscidFluxReconstruction order,
+        pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams)
     : m_domIdx(domainIndex)
     , m_mesh(&mesh)
     , m_app(std::make_shared<app_t>(pda::create_problem_eigen(
-            mesh, probId, order,
+            mesh, probId, fluxOrder,
             BCFunctor<mesh_t>(bcLeft),  BCFunctor<mesh_t>(bcFront),
             BCFunctor<mesh_t>(bcRight), BCFunctor<mesh_t>(bcBack),
             icflag, userParams)))
@@ -267,7 +267,7 @@ public:
         BCType bcRight, BCType bcBack,
         prob_t probId,
         pressio::ode::StepScheme odeScheme,
-        pda::InviscidFluxReconstruction order,
+        pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
@@ -276,7 +276,7 @@ public:
     : m_domIdx(domainIndex)
     , m_mesh(&mesh)
     , m_app(std::make_shared<app_t>(pda::create_problem_eigen(
-            mesh, probId, order,
+            mesh, probId, fluxOrder,
             BCFunctor<mesh_t>(bcLeft),  BCFunctor<mesh_t>(bcFront),
             BCFunctor<mesh_t>(bcRight), BCFunctor<mesh_t>(bcBack),
             icflag, userParams)))
@@ -427,7 +427,7 @@ public:
         BCType bcRight, BCType bcBack,
         prob_t probId,
         pressio::ode::StepScheme odeScheme,
-        pda::InviscidFluxReconstruction order,
+        pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
@@ -435,7 +435,7 @@ public:
         const int nmodes)
     : base_t(domainIndex, mesh,
              bcLeft, bcFront, bcRight, bcBack,
-             probId, odeScheme, order, icflag, userParams,
+             probId, odeScheme, fluxOrder, icflag, userParams,
              transRoot, basisRoot, nmodes)
     , m_problem(plspg::create_unsteady_problem(odeScheme, this->m_trialSpace, *(this->m_app)))
     , m_stepper(m_problem.lspgStepper())
@@ -491,7 +491,7 @@ public:
         BCType bcRight, BCType bcBack,
         prob_t probId,
         pressio::ode::StepScheme odeScheme,
-        pda::InviscidFluxReconstruction order,
+        pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
@@ -501,13 +501,13 @@ public:
     : m_domIdx(domainIndex)
     , m_meshFull(&meshFull)
     , m_probId(probId)
-    , m_order(order)
+    , m_fluxOrder(fluxOrder)
     , m_bcLeft(bcLeft), m_bcFront(bcFront)
     , m_bcRight(bcRight), m_bcBack(bcBack)
     , m_icflag(icflag)
     , m_userParams(userParams)
     , m_appFull(std::make_shared<app_t>(pda::create_problem_eigen(
-            meshFull, probId, order,
+            meshFull, probId, fluxOrder,
             BCFunctor<mesh_t>(bcLeft),  BCFunctor<mesh_t>(bcFront),
             BCFunctor<mesh_t>(bcRight), BCFunctor<mesh_t>(bcBack),
             icflag, userParams)))
@@ -621,7 +621,7 @@ public:
         }
 
         m_appHyper = std::make_shared<app_t>(pda::create_problem_eigen(
-            m_meshHyper, m_probId, m_order,
+            m_meshHyper, m_probId, m_fluxOrder,
             BCFunctor<mesh_t>(m_bcLeft),  BCFunctor<mesh_t>(m_bcFront),
             BCFunctor<mesh_t>(m_bcRight), BCFunctor<mesh_t>(m_bcBack),
             m_icflag, m_userParams));
@@ -669,7 +669,7 @@ public:
     std::shared_ptr<app_t> m_appHyper;
 
     prob_t m_probId;
-    pda::InviscidFluxReconstruction m_order;
+    pda::InviscidFluxReconstruction m_fluxOrder;
     int m_icflag;
     const std::unordered_map<std::string, typename mesh_t::scalar_type> m_userParams;
     BCType m_bcLeft;
@@ -742,7 +742,7 @@ public:
         BCType bcRight, BCType bcBack,
         prob_t probId,
         pressio::ode::StepScheme odeScheme,
-        pda::InviscidFluxReconstruction order,
+        pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
@@ -751,7 +751,7 @@ public:
         const std::string & meshPathHyper)
     : base_t(domainIndex, meshFull,
              bcLeft, bcFront, bcRight, bcBack,
-             probId, odeScheme, order, icflag, userParams,
+             probId, odeScheme, fluxOrder, icflag, userParams,
              transRoot, basisRoot, nmodes,
              meshPathHyper)
     {
@@ -827,8 +827,8 @@ auto create_subdomains(
     const std::vector<mesh_t> & meshes,
     const Tiling & tiling,
     prob_t probId,
-    pode::StepScheme odeScheme,
-    pda::InviscidFluxReconstruction order,
+    std::vector<pode::StepScheme> & odeSchemes,
+    std::vector<pda::InviscidFluxReconstruction> & fluxOrders,
     int icFlag = 0,
     const std::unordered_map<std::string, typename app_t::scalar_type> & userParams = {})
 {
@@ -840,7 +840,7 @@ auto create_subdomains(
     std::vector<std::string> meshPathsHyper(ndomains, "");
 
     return create_subdomains<app_t>(meshes, tiling,
-        probId, odeScheme, order,
+        probId, odeSchemes, fluxOrders,
         domFlagVec, "", "", nmodesVec,
         icFlag, meshPathsHyper, userParams);
 
@@ -854,8 +854,8 @@ auto create_subdomains(
     const std::vector<mesh_t> & meshes,
     const Tiling & tiling,
     prob_t probId,
-    pode::StepScheme odeScheme,
-    pda::InviscidFluxReconstruction order,
+    std::vector<pode::StepScheme> & odeSchemes,
+    std::vector<pda::InviscidFluxReconstruction> & fluxOrders,
     const std::vector<std::string> & domFlagVec,
     const std::string & transRoot,
     const std::string & basisRoot,
@@ -865,8 +865,6 @@ auto create_subdomains(
     const std::unordered_map<std::string, typename app_t::scalar_type> & userParams = {})
 {
 
-    // add checks that vectors are all same size?
-
     using subdomain_t = SubdomainBase<mesh_t, typename app_t::state_type>;
     std::vector<std::shared_ptr<subdomain_t>> result;
 
@@ -874,6 +872,13 @@ auto create_subdomains(
     const int ndomY = tiling.countY();
     const int ndomZ = tiling.countZ();
     const int ndomains = tiling.count();
+
+    // check sizes
+    if (meshes.size() != ndomains) { throw std::runtime_error("Incorrect number of mesh objects"); }
+    if (odeSchemes.size() != ndomains) { throw std::runtime_error("Incorrect number of ODE schemes"); }
+    if (fluxOrders.size() != ndomains) { throw std::runtime_error("Incorrect number of flux order"); }
+    if (domFlagVec.size() != ndomains) { throw std::runtime_error("Incorrect number of domain flags"); }
+    if (nmodesVec.size() != ndomains) { throw std::runtime_error("Incorrect number of ROM mode counts"); }
 
     // determine boundary conditions for each subdomain, specify app type
     for (int domIdx = 0; domIdx < ndomains; ++domIdx)
@@ -913,20 +918,20 @@ auto create_subdomains(
             result.emplace_back(std::make_shared<SubdomainFOM<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeScheme, order, icFlag, userParams));
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams));
         }
         else if (domFlagVec[domIdx] == "LSPG") {
             result.emplace_back(std::make_shared<SubdomainLSPG<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeScheme, order, icFlag, userParams,
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx]));
         }
         else if (domFlagVec[domIdx] == "LSPGHyper") {
             result.emplace_back(std::make_shared<SubdomainLSPGHyper<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeScheme, order, icFlag, userParams,
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx],
                 meshPathsHyper[domIdx]));
         }

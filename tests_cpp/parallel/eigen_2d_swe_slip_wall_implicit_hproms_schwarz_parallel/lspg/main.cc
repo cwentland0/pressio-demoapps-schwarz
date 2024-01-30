@@ -27,19 +27,19 @@ int main(int argc, char *argv[])
     const auto probId = pda::Swe2d::CustomBCs;
 #ifdef USE_WENO5
     static_assert(false);
-    const auto order   = pda::InviscidFluxReconstruction::Weno5;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(12, pda::InviscidFluxReconstruction::Weno5);
 #elif defined USE_WENO3
     std::string outRoot = "./weno3" + dir_suffix;
-    const auto order   = pda::InviscidFluxReconstruction::Weno3;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(12, pda::InviscidFluxReconstruction::Weno3);
 #else
     std::string outRoot = "./firstorder" + dir_suffix;
-    const auto order   = pda::InviscidFluxReconstruction::FirstOrder;
+    std::vector<pda::InviscidFluxReconstruction> orderVec(12, pda::InviscidFluxReconstruction::FirstOrder);
 #endif
     std::string obsRoot = outRoot + "/swe_slipWall2d_solution";
     std::string meshRootFull = outRoot + "/full_mesh_decomp";
     std::string meshRootHyper = outRoot + "/sample_mesh_decomp";
 
-    const auto scheme = pode::StepScheme::BDF1;
+    std::vector<pode::StepScheme> schemeVec(12, pode::StepScheme::BDF1);
     const int icFlag = 1;
     using app_t = pdas::swe2d_app_type;
 
@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
         meshPathsHyper.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx));
     }
     auto subdomains = pdas::create_subdomains<app_t>(
-        meshObjsFull, *tiling, probId, scheme, order,
+        meshObjsFull, *tiling, probId, schemeVec, orderVec,
         domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, meshPathsHyper);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 

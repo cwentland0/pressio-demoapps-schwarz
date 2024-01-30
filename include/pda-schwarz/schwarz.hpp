@@ -715,34 +715,34 @@ public:
                 }
             }
 
-        auto task1 = [&](int domIdx) {
-            domainControlLoop(domIdx, currentTime, outerStep, errs(domIdx, 0));
-        };
-        pool.detach_loop<int>(0, ndomains, task1);
-        pool.wait();
+            auto task1 = [&](int domIdx) {
+                domainControlLoop(domIdx, currentTime, outerStep, errs(domIdx, 0));
+            };
+            pool.detach_loop<int>(0, ndomains, task1);
+            pool.wait();
 
-        for(int i = 0 ; i < ndomains ; ++i){
-            m_ae += errs(i, 0).m_absolute;
-            m_re += errs(i, 0).m_relative;
-        }
-        m_re /= double(ndomains);
-        m_ae /= double(ndomains);
-        std::cout << "Schwarz iteration " << convergeStep + 1 << "\n";
-        std::cout << "Average abs err: " << m_ae << "\n";
-        std::cout << "Average rel err: " << m_re << '\n';
+            for(int i = 0 ; i < ndomains ; ++i){
+                m_ae += errs(i, 0).m_absolute;
+                m_re += errs(i, 0).m_relative;
+            }
+            m_re /= double(ndomains);
+            m_ae /= double(ndomains);
+            std::cout << "Schwarz iteration " << convergeStep + 1 << "\n";
+            std::cout << "Average abs err: " << m_ae << "\n";
+            std::cout << "Average rel err: " << m_re << '\n';
 
-        if ((m_re < rel_err_tol) || (m_ae < abs_err_tol)) {
-            break;
-        }
-        convergeStep++;
+            if ((m_re < rel_err_tol) || (m_ae < abs_err_tol)) {
+                break;
+            }
+            convergeStep++;
 
-        auto task = [&](const int domIdx){ broadcast_bcState(domIdx); };
-        pool.detach_loop<int>(0, ndomains, task);
-        pool.wait();
+            auto task = [&](const int domIdx){ broadcast_bcState(domIdx); };
+            pool.detach_loop<int>(0, ndomains, task);
+            pool.wait();
 
-        auto taskreset = [&](const int domIdx){ m_subdomainVec[domIdx]->resetStateFromHistory(); };
-        pool.detach_loop<int>(0, ndomains, taskreset);
-        pool.wait();
+            auto taskreset = [&](const int domIdx){ m_subdomainVec[domIdx]->resetStateFromHistory(); };
+            pool.detach_loop<int>(0, ndomains, taskreset);
+            pool.wait();
         }
 
         return convergeStep;
