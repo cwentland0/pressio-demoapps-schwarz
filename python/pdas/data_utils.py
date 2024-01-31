@@ -211,7 +211,7 @@ def load_info_domain(meshdir):
                 overlap = int(val)
 
     assert all([ndom >= 1 for ndom in ndom_list])
-    assert overlap > 1  # TODO: adjust when non-overlapping implemented
+    assert overlap >= 0
 
     return ndom_list, overlap
 

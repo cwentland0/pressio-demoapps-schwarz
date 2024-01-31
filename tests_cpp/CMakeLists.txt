@@ -31,6 +31,7 @@ add_subdirectory(eigen_2d_swe_slip_wall_implicit_roms_schwarz)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms_schwarz)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_mixed_schwarz)
+add_subdirectory(eigen_2d_swe_slip_wall_implicit_nonoverlap_dd)
 
 # misc subdirectories
 if(PARTESTS)
