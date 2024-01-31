@@ -211,7 +211,7 @@ def load_info_domain(meshdir):
                 overlap = int(val)
 
     assert all([ndom >= 1 for ndom in ndom_list])
-    assert overlap > 1  # TODO: adjust when non-overlapping implemented
+    assert overlap >= 0
 
     return ndom_list, overlap
 
@@ -269,10 +269,24 @@ def calc_mesh_bounds(meshdirs):
                         ndim = coords_sub[i][j][k].shape[-1]
                         if ndim == 2:
                             x = coords_sub[i][j][k][:, :, 0]
+                            dx = x[1, 0] - x[0, 0]
+                            xmin = np.amin(x)
+                            xmax = np.amax(x)
+                            if i != 0:
+                                xmin -= dx / 2
+                            if i != len(coords_sub) - 1:
+                                xmax += dx / 2
                             y = coords_sub[i][j][k][:, :, 1]
+                            dy = y[0, 1] - y[0, 0]
+                            ymin = np.amin(y)
+                            ymax = np.amax(y)
+                            if j != 0:
+                                ymin -= dy / 2
+                            if j != len(coords_sub[0]) - 1:
+                                ymax += dy / 2
                             bounds[mesh_idx].append([
-                                [np.amin(x), np.amax(x)],
-                                [np.amin(y), np.amax(y)],
+                                [xmin, xmax],
+                                [ymin, ymax],
                             ])
                         else:
                             raise ValueError(f"Invalid dimension: {ndim}")
