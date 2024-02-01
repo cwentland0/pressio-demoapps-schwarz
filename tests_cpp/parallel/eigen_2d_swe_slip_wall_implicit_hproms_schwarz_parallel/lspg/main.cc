@@ -99,24 +99,16 @@ int main(int argc, char *argv[])
             std::cout << "Step " << outerStep << std::endl;
         }
 
-#pragma omp barrier
-#pragma omp master
-        {
-            auto runtimeStart = std::chrono::high_resolution_clock::now();
-        }
+        auto runtimeStart = std::chrono::high_resolution_clock::now();
         auto numSubiters = decomp.additive_step(outerStep, simultime, rel_err_tol, abs_err_tol, convergeStepMax);
+        simultime += decomp.m_dtMax;
 #pragma omp barrier
 #pragma omp master
         {
             const auto runtimeEnd = std::chrono::high_resolution_clock::now();
-            const auto nsDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart);
-            secsElapsed = static_cast<double>(nsDuration.count());
-        }
-        simultime += decomp.m_dtMax;
+            std::chrono::duration<double, std::milli> duration = runtimeEnd - runtimeStart;
+            obs_time(duration.count() * 1e-3, numSubiters);
 
-#pragma omp barrier
-#pragma omp master
-        {
             // output observer
             if ((outerStep % obsFreq) == 0) {
                 const auto stepWrap = pode::StepCount(outerStep);
@@ -124,7 +116,6 @@ int main(int argc, char *argv[])
                     obsVec[domIdx](stepWrap, time, *decomp.m_subdomainVec[domIdx]->getStateFull());
                 }
             }
-            obs_time(secsElapsed, numSubiters);
         }
 
     }
