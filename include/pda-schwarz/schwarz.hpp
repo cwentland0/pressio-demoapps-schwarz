@@ -745,7 +745,8 @@ public:
             pool.wait();
         }
 
-        return convergeStep;
+        // breaks before counter increments
+        return convergeStep + 1;
     }
 
     int additive_step(int outerStep, double currentTime,
@@ -831,7 +832,8 @@ public:
             }
         } // convergence loop
 
-        return convergeStep;
+        // returns before counter increments
+        return convergeStep + 1;
     }
 
 
@@ -888,7 +890,8 @@ public:
 
         } // convergence loop
 
-        return convergeStep;
+        // break is before counter increments
+        return convergeStep + 1;
     }
 
 private:

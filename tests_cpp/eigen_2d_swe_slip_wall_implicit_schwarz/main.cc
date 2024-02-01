@@ -73,8 +73,8 @@ int main()
             convergeStepMax
         );
         const auto runtimeEnd = std::chrono::high_resolution_clock::now();
-        const auto nsDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart);
-        const double secsElapsed = static_cast<double>(nsDuration.count()) * 1e-9;
+        std::chrono::duration<double, std::milli> duration = runtimeEnd - runtimeStart;
+        obs_time(duration.count() * 1e-3, numSubiters);
 
         time += decomp.m_dtMax;
 
@@ -85,10 +85,6 @@ int main()
                 obsVec[domIdx](stepWrap, time, *decomp.m_subdomainVec[domIdx]->getStateFull());
             }
         }
-
-        // runtime observer
-        obs_time(secsElapsed, numSubiters);
-
     }
 
   return 0;

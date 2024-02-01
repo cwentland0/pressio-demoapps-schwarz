@@ -82,9 +82,8 @@ int main()
     auto runtimeStart = std::chrono::high_resolution_clock::now();
     pode::advance_n_steps(stepper, reducedState, 0.0, dt, Nsteps, Obs, solver);
     auto runtimeEnd = std::chrono::high_resolution_clock::now();
-    auto nsElapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart).count();
-    double secElapsed = static_cast<double>(nsElapsed) * 1e-9;
-    Obs_run(secElapsed);
+    std::chrono::duration<double, std::milli> duration = runtimeEnd - runtimeStart;
+    Obs_run(duration.count() * 1e-3);
 
     pressio::log::finalize();
     return 0;
