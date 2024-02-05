@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser
 
-from pdas.prom_utils import gen_sample_mesh
+from pdas.samp_utils import gen_sample_mesh
 
 parser = ArgumentParser()
 parser.add_argument("--outdir", dest="outdir")
