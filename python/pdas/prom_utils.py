@@ -241,6 +241,11 @@ def load_pod_basis(
     elif os.path.isfile(os.path.join(basisdir, "basis_0.bin")):
         print("Decomposed basis detected")
 
+        if nmodes is not None:
+            if isinstance(nmodes, int):
+                nmodes = [nmodes] * 100
+            assert isinstance(nmodes, list)
+
         dom_idx = 0
         basis = []
         center = []
@@ -248,7 +253,7 @@ def load_pod_basis(
         svals = []
         while os.path.isfile(os.path.join(basisdir, f"basis_{dom_idx}.bin")):
             if return_basis:
-                basis_in = read_from_binary(os.path.join(basisdir, f"basis_{dom_idx}.bin"))[:, :nmodes]
+                basis_in = read_from_binary(os.path.join(basisdir, f"basis_{dom_idx}.bin"))[:, :nmodes[dom_idx]]
                 basis.append(basis_in.copy())
             if return_center:
                 center_in = read_from_binary(os.path.join(basisdir, f"center_{dom_idx}.bin"))
