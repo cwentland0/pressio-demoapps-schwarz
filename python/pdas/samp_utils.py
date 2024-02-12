@@ -1,5 +1,5 @@
 import os
-from math import floor
+from math import floor, ceil
 
 import numpy as np
 from scipy.linalg import qr
@@ -343,10 +343,19 @@ def calc_eigenvec_samples(
     numsamps,
     points_seed=[],
     search_cell_ids=None,
+    randseed=0,
 ):
     ndof_per_cell = round(basis.shape[0] / ncells)
+    nmodes = basis.shape[-1]
 
-    assert len(points_seed) > 0
+    # if no seed provided, just sample nmodes/ndof_per_cell random cells to start things
+    # need that many cells to make sure right svecs have correct shape
+    if len(points_seed) == 0:
+        rng = np.random.default_rng(seed=randseed)
+        all_samples = np.arange(ncells)
+        rng.shuffle(all_samples)
+        points_seed += list(all_samples[:ceil(nmodes / ndof_per_cell)])
+
     samp_ids = np.array(points_seed, dtype=np.int32)
 
     if search_cell_ids is None:
