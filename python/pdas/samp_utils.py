@@ -208,7 +208,6 @@ def gen_sample_mesh(
     samp_dom_bounds=True,
     randseed=0,
 ):
-    breakpoint()
     # expand as necessary
     assert samptype in ["random", "eigenvec", "gnat"]
     assert (percpoints > 0.0) and (percpoints <= 1.0)
