@@ -300,6 +300,7 @@ def load_meshes(
 ):
     """"""
 
+    assert os.path.isdir(meshdir), f"No mesh directory at {meshdir}"
     print(f"Loading mesh from {meshdir}")
 
     # detect decomposed vs. monolithic
@@ -329,9 +330,9 @@ def load_meshes(
         return coords, coords_sub
 
     else:
+        print("Monolithic mesh detected")
         coords = load_mesh_single(meshdir)
         coords_sub = None
-        print("Monolithic mesh detected")
 
     return coords, coords_sub
 
@@ -372,6 +373,7 @@ def load_field_data(
     """
 
 
+    assert os.path.isdir(datadir), f"No data directory found at {datadir}"
     print(f"Loading data from {datadir}")
 
     # detect monolithic vs. decomposed

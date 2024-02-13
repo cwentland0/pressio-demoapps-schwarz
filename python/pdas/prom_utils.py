@@ -219,6 +219,7 @@ def load_pod_basis(
 
     # REMINDER: merging decomposed bases is NOT VALID
 
+    assert os.path.isdir(basisdir), f"No basis directory at {basisdir}"
     print(f"Loading basis from {basisdir}")
 
     out_tuple = ()
