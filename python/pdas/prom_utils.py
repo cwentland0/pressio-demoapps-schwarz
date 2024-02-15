@@ -295,6 +295,7 @@ def load_reduced_data(
     nmodes,
 ):
 
+    assert os.path.isdir(datadir), f"No data directory at {datadir}"
     print(f"Loading data from {datadir}")
 
     # detect monolithic vs decomposed

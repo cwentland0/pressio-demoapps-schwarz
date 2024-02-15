@@ -105,8 +105,10 @@ public:
         // set up ghost filling graph, boundary pointers
         calc_ghost_graph();
 
+#ifndef SCHWARZ_SAVE_TEMPDIR
         // delete temporary directory
         std::filesystem::remove_all(m_tempdir);
+#endif
 
     }
 
@@ -337,6 +339,14 @@ private:
             const auto & meshFull = m_subdomainVec[domIdx]->getMeshFull();
             const auto * sampGids = m_subdomainVec[domIdx]->getSampleGids();
             const auto & graphFull = meshFull.graph();
+
+            // sampled GIDs (rewritten mostly for post-processing's sake)
+            std::ofstream sample_file(subdom_dir + "/sample_mesh_gids.dat");
+            for (int sampIdx = 0; sampIdx < sampGids->rows(); ++sampIdx) {
+                int samp_gid = (*sampGids)(sampIdx);
+                sample_file << std::to_string(samp_gid) + "\n";
+            }
+            sample_file.close();
 
             // stencil GIDs
             std::ofstream stencil_file(subdom_dir + "/stencil_mesh_gids.dat");
