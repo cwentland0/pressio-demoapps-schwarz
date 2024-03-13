@@ -5,6 +5,7 @@ set(DECOMPSRC ${CMAKE_CURRENT_SOURCE_DIR}/../meshing_scripts)
 # optional flags for limiting/expanding build
 set(TESTWENO3 TRUE)
 option(PARTESTS "" OFF)
+add_compile_definitions(SCHWARZ_SAVE_TEMPDIR)
 
 # include demoapps headers and Schwarz routines
 include_directories(
@@ -32,6 +33,7 @@ add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms_schwarz)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_mixed_schwarz)
 add_subdirectory(eigen_2d_swe_slip_wall_implicit_nonoverlap_dd)
+add_subdirectory(eigen_2d_swe_slip_wall_implicit_hproms_gpod)
 
 # misc subdirectories
 if(PARTESTS)
