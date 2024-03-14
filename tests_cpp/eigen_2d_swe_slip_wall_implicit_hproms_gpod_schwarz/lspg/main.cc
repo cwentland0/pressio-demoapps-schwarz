@@ -1,4 +1,4 @@
-
+#include <chrono>
 #include "pressiodemoapps/swe2d.hpp"
 #include "pda-schwarz/schwarz.hpp"
 #include "../../observer.hpp"
@@ -31,7 +31,7 @@ int main()
     using app_t = pdas::swe2d_app_type;
 
     // ROM definition
-    std::vector<std::string> domFlagVec{"FOM", "LSPGHyper", "LSPGHyper", "FOM"};
+    std::vector<std::string> domFlagVec(4, "LSPGHyper");
     std::string transRoot = "./trial_space/center";
     std::string basisRoot = "./trial_space/basis";
     std::vector<int> nmodesVec(4, 25);
@@ -43,7 +43,10 @@ int main()
     const double abs_err_tol = 1e-11;
     const double rel_err_tol = 1e-11;
 
-    using weigh_t = typename pdas::IdentityWeigher<app_t::scalar_type>;
+    // Gappy POD definition
+    std::string basisRoot_gpod = "./trial_space/basis";
+    std::vector<int> nmodesVec_gpod(4, 30);
+    using weigh_t = typename pdas::GappyPODWeigher<app_t::scalar_type>;
 
     // +++++ END USER INPUTS +++++
 
@@ -57,7 +60,7 @@ int main()
     auto subdomains = pdas::create_subdomains<app_t, weigh_t>(
         meshObjsFull, *tiling, probId, schemeVec, orderVec,
         domFlagVec, transRoot, basisRoot, nmodesVec, icFlag,
-        samplePaths);
+        samplePaths, basisRoot_gpod, nmodesVec_gpod);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observer
@@ -88,11 +91,11 @@ int main()
             abs_err_tol,
             convergeStepMax
         );
-        time += decomp.m_dtMax;
-
         const auto runtimeEnd = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> duration = runtimeEnd - runtimeStart;
-        obs_time(duration.count() * 1e-3, numSubiters);
+        const auto nsDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart);
+        const double secsElapsed = static_cast<double>(nsDuration.count()) * 1e-9;
+
+        time += decomp.m_dtMax;
 
         // output observer
         if ((outerStep % obsFreq) == 0) {
@@ -101,6 +104,10 @@ int main()
                 obsVec[domIdx](stepWrap, time, *decomp.m_subdomainVec[domIdx]->getStateFull());
             }
         }
+
+        // runtime observer
+        obs_time(secsElapsed, numSubiters);
+
     }
 
     return 0;

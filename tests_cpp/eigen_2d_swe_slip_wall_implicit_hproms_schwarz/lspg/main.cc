@@ -1,6 +1,7 @@
 #include <chrono>
 #include "pressiodemoapps/swe2d.hpp"
 #include "pda-schwarz/schwarz.hpp"
+#include "pda-schwarz/rom_utils.hpp"
 #include "../../observer.hpp"
 
 
@@ -43,6 +44,8 @@ int main()
     const double abs_err_tol = 1e-11;
     const double rel_err_tol = 1e-11;
 
+    using weigh_t = typename pdas::IdentityWeigher<app_t::scalar_type>;
+
     // +++++ END USER INPUTS +++++
 
     // tiling, meshes, and decomposition
@@ -52,7 +55,7 @@ int main()
     for (int domIdx = 0; domIdx < meshPathsFull.size(); ++ domIdx) {
         samplePaths.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx) + "/sample_mesh_gids.dat");
     }
-    auto subdomains = pdas::create_subdomains<app_t>(
+    auto subdomains = pdas::create_subdomains<app_t, weigh_t>(
         meshObjsFull, *tiling, probId, schemeVec, orderVec,
         domFlagVec, transRoot, basisRoot, nmodesVec, icFlag,
         samplePaths);

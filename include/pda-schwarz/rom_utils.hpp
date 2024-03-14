@@ -243,6 +243,22 @@ auto reduce_vector_on_stencil_mesh(
     return result;
 }
 
+template<class scalar_t>
+class IdentityWeigher{
+
+public:
+
+    IdentityWeigher(...) {}
+
+    template<class T>
+    void operator()(const Eigen::MatrixBase<T> & operand,
+            Eigen::MatrixBase<T> & result) const
+    {
+        // since this is an identity, just do a deep copy
+        result = operand;
+    }
+
+};
 
 // Gappy POD weighting operator passed to create_gauss_newton_solver()
 // Computes operator ([ S * Psi ]^+)^T * [ S * Psi ]^+,

@@ -703,7 +703,7 @@ public:
 
 };
 
-template<class mesh_t, class app_type, class prob_t>
+template<class mesh_t, class app_type, class prob_t, class weigh_t>
 class SubdomainLSPGHyper: public SubdomainHyper<mesh_t, app_type, prob_t>
 {
     using base_t = SubdomainHyper<mesh_t, app_type, prob_t>;
@@ -731,8 +731,11 @@ public:
         decltype(std::declval<problemHyp_t>().lspgStepper())>;
 
     using nonlinsolverHyp_t =
-        decltype(pressio::create_gauss_newton_solver(std::declval<stepperHyp_t&>(),
-            std::declval<linsolver_t&>()));
+        decltype(pressio::create_gauss_newton_solver(
+            std::declval<stepperHyp_t&>(),
+            std::declval<linsolver_t&>(),
+            std::declval<weigh_t&>()
+        ));
 
 public:
     SubdomainLSPGHyper(
@@ -748,7 +751,9 @@ public:
         const std::string & transRoot,
         const std::string & basisRoot,
         const int nmodes,
-        const std::string & sampleFile)
+        const std::string & sampleFile,
+        const std::string & basisRoot_gpod,
+        const int nmodes_gpod)
     : base_t(domainIndex, meshFull,
              bcLeft, bcFront, bcRight, bcBack,
              probId, odeScheme, fluxOrder, icflag, userParams,
@@ -756,6 +761,8 @@ public:
              sampleFile)
     {
         m_odeScheme = odeScheme;
+        m_basisRoot_gpod = basisRoot_gpod;
+        m_nmodes_gpod = nmodes_gpod;
     }
 
     void doStep(pode::StepStartAt<double> startTime, pode::StepCount step, pode::StepSize<double> dt) final {
@@ -785,18 +792,30 @@ public:
         m_stepperHyper = &(m_problemHyper->lspgStepper());
 
         m_linSolverObjHyper = std::make_shared<linsolver_t>();
+        
+        // residual weighting
+        std::string basisfile_gpod = m_basisRoot_gpod + "_" + std::to_string(this->m_domIdx) + ".bin";
+        m_weigher = std::make_shared<weigh_t>(
+            basisfile_gpod,
+            this->m_sampleFile,
+            m_nmodes_gpod,
+            this->getDofPerCell()
+        );
 
         m_nonlinSolverHyper = std::make_shared<nonlinsolverHyp_t>
-            (pressio::create_gauss_newton_solver(*m_stepperHyper, *m_linSolverObjHyper));
+            (pressio::create_gauss_newton_solver(*m_stepperHyper, *m_linSolverObjHyper, *m_weigher));
     }
 
 // TODO: to protected
 public:
     pressio::ode::StepScheme m_odeScheme;
+    std::string m_basisRoot_gpod;
+    int m_nmodes_gpod;
     std::shared_ptr<updaterHyp_t> m_updaterHyper;
     std::shared_ptr<problemHyp_t> m_problemHyper;
     stepperHyp_t * m_stepperHyper;
     std::shared_ptr<linsolver_t> m_linSolverObjHyper;
+    std::shared_ptr<weigh_t> m_weigher;
     std::shared_ptr<nonlinsolverHyp_t> m_nonlinSolverHyper;
 };
 
@@ -838,18 +857,24 @@ auto create_subdomains(
     // dummy arguments
     std::vector<int> nmodesVec(ndomains, -1);
     std::vector<std::string> samplePaths(ndomains, "");
+    std::vector<int> nmodesVec_gpod(ndomains, -1);
 
-    return create_subdomains<app_t>(meshes, tiling,
+    using weigh_t = IdentityWeigher<typename app_t::scalar_type>;
+
+    return create_subdomains<app_t, weigh_t>(
+        meshes, tiling,
         probId, odeSchemes, fluxOrders,
         domFlagVec, "", "", nmodesVec,
-        icFlag, samplePaths, userParams);
+        icFlag, samplePaths,
+        "", nmodesVec_gpod,
+        userParams);
 
 }
 
 //
 // Subdomain type specified by domFlagVec
 //
-template<class app_t, class mesh_t, class prob_t>
+template<class app_t, class weigh_t, class mesh_t, class prob_t>
 auto create_subdomains(
     const std::vector<mesh_t> & meshes,
     const Tiling & tiling,
@@ -862,6 +887,8 @@ auto create_subdomains(
     const std::vector<int> & nmodesVec,
     int icFlag = 0,
     const std::vector<std::string> & samplePaths = {},
+    const std::string & basisRoot_gpod = "",
+    const std::vector<int> & nmodesVec_gpod = {},
     const std::unordered_map<std::string, typename app_t::scalar_type> & userParams = {})
 {
 
@@ -879,6 +906,18 @@ auto create_subdomains(
     if (fluxOrders.size() != ndomains) { throw std::runtime_error("Incorrect number of flux order"); }
     if (domFlagVec.size() != ndomains) { throw std::runtime_error("Incorrect number of domain flags"); }
     if (nmodesVec.size() != ndomains) { throw std::runtime_error("Incorrect number of ROM mode counts"); }
+    
+    // Gappy POD modes are a bit finicky
+    std::vector<int> nmodesVec_gpod_in(ndomains, 0);
+    if (nmodesVec_gpod.empty()) {
+        if (!(std::is_same<weigh_t, IdentityWeigher<typename app_t::scalar_type>>::value)) {
+            throw std::runtime_error("Got empty nmodesVec_gpod, must use IdentityWeigher");
+        }
+    }
+    else {
+        if (nmodesVec_gpod.size() != ndomains) { throw std::runtime_error("Incorrect number of Gappy POD mode counts"); }
+        nmodesVec_gpod_in = nmodesVec_gpod;
+    }
 
     // determine boundary conditions for each subdomain, specify app type
     for (int domIdx = 0; domIdx < ndomains; ++domIdx)
@@ -928,12 +967,13 @@ auto create_subdomains(
                 transRoot, basisRoot, nmodesVec[domIdx]));
         }
         else if (domFlagVec[domIdx] == "LSPGHyper") {
-            result.emplace_back(std::make_shared<SubdomainLSPGHyper<mesh_t, app_t, prob_t>>(
+            result.emplace_back(std::make_shared<SubdomainLSPGHyper<mesh_t, app_t, prob_t, weigh_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
                 probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx],
-                samplePaths[domIdx]));
+                samplePaths[domIdx],
+                basisRoot_gpod, nmodesVec_gpod_in[domIdx]));
         }
         else {
             std::runtime_error("Invalid subdomain flag value: " + domFlagVec[domIdx]);
