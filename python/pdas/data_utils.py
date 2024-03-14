@@ -563,61 +563,40 @@ def read_from_binary(infile):
 def read_runtimes(
     datadirs,
     dataroot,
-    methodlist,
 ):
 
     if isinstance(datadirs, str):
         datadirs = [datadirs]
     ndata = len(datadirs)
 
-    assert len(methodlist) == ndata
-    assert all([method in ["mono", "mult", "add"] for method in methodlist])
-
     runtimelist = [None for _ in range(ndata)]
-    niterslist = [None for _ in range(ndata)]
+    iterslist = [None for _ in range(ndata)]
+    subiterslist = [None for _ in range(ndata)]
     for data_idx, datadir in enumerate(datadirs):
 
         datafile = os.path.join(datadir, f"{dataroot}.bin")
         with open(datafile, 'rb') as f:
             contents = f.read()
 
-        ndomains = struct.unpack('Q', contents[:8])[0]
         nbytes_file = len(contents)
-        nbytes_read = 8
 
-        timelist = []
-        niters_tot = 0
+        iters_tot = 0
+        nsubiters_tot = 0
+        runtime_tot = 0.0
+        nbytes_read = 0
         while nbytes_read < nbytes_file:
 
-            niters = struct.unpack('Q', contents[nbytes_read:nbytes_read+8])[0]
+            nsubiters = struct.unpack('Q', contents[nbytes_read:nbytes_read+8])[0]
             nbytes_read += 8
-            niters_tot += niters
-            runtime_arr = np.zeros((ndomains, niters), dtype=np.float64)
+            nsubiters_tot += nsubiters
+            runtime = struct.unpack('d', contents[nbytes_read:nbytes_read+8])[0]
+            nbytes_read += 8
+            runtime_tot += runtime
 
-            for iter_idx in range(niters):
-                runtime_vals = struct.unpack('d'*ndomains, contents[nbytes_read:nbytes_read+8*ndomains])
-                runtime_arr[:, iter_idx] = np.array(runtime_vals, dtype=np.float64)
-                nbytes_read += 8*ndomains
+            iters_tot += 1
 
-            timelist.append(runtime_arr.copy())
+        iterslist[data_idx] = iters_tot
+        subiterslist[data_idx] = nsubiters_tot
+        runtimelist[data_idx] = runtime_tot
 
-        niterslist[data_idx] = niters_tot
-
-        # single-domain
-        if (len(timelist) == 1) and (timelist[0].shape == (1, 1)):
-            assert methodlist[data_idx] == "mono"
-            runtimelist[data_idx] = timelist[0][0, 0]
-
-        else:
-            assert methodlist[data_idx] in ["mult", "add"]
-            runtime_est = 0.0
-            for runtime_arr in timelist:
-                if methodlist[data_idx] == "mult":
-                    # multiplicative
-                    runtime_est += np.sum(runtime_arr)
-                else:
-                    # additive
-                    runtime_est += np.sum(np.amax(runtime_arr, axis=0))
-            runtimelist[data_idx] = runtime_est
-
-    return runtimelist, niterslist
+    return runtimelist, iterslist, subiterslist

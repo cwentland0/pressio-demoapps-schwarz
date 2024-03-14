@@ -38,6 +38,7 @@ def plot_contours(
     plotbounds=False,
     bound_colors=None,
     figdim_base=[6.4, 4.8],
+    fontsize_scaling=1,
     vertical=True,
 ):
 
@@ -103,6 +104,8 @@ def plot_contours(
     itercounter = 0
     for t in range(0, nt_min):
 
+        print(f"Figure {t+1}/{nt_min}")
+
         for plotnum in range(ndata):
             ax[plotnum].cla()
 
@@ -131,11 +134,11 @@ def plot_contours(
                             linestyle="--",
                         )
 
-            ax[plotnum].set_title(plotlabels[plotnum], fontsize=18)
-            ax[plotnum].tick_params(axis='both', which='major', labelsize=14)
+            ax[plotnum].set_title(plotlabels[plotnum], fontsize=18*fontsize_scaling)
+            ax[plotnum].tick_params(axis='both', which='major', labelsize=14*fontsize_scaling)
 
-        fig.supxlabel('x', fontsize=16)
-        fig.supylabel('y', fontsize=16)
+        fig.supxlabel('x', fontsize=16*fontsize_scaling)
+        fig.supylabel('y', fontsize=16*fontsize_scaling)
 
         if (t == 0) and draw_colorbar:
             plt.tight_layout()
@@ -151,19 +154,21 @@ def plot_contours(
                 cbar = fig.colorbar(cf, cax=cbar_ax, orientation="horizontal")
                 cbar.ax.xaxis.set_label_position('top')
             cbar.set_ticks(ticks)
+            cbar.ax.tick_params(labelsize=10*fontsize_scaling)
             if varlabel is not None:
-                cbar.set_label(varlabel)
-
-        plt.pause(pause_time)
-        if (stopiter != -1) and (itercounter >= stopiter):
-            breakpoint()
+                cbar.set_label(varlabel, fontsize=18*fontsize_scaling)
 
         if savefigs:
             plt.savefig(os.path.join(outdir, f'fig_{t}.png'))
+        else:
+            plt.pause(pause_time)
+            if (stopiter != -1) and (itercounter >= stopiter):
+                breakpoint()
 
         itercounter += 1
 
-    plt.show()
+    if not savefigs:
+        plt.show()
     print("Finished")
 
 

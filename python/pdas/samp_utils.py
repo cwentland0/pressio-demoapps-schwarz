@@ -8,7 +8,15 @@ from pdas.data_utils import load_meshes, load_info_domain
 from pdas.prom_utils import load_pod_basis
 
 
-def get_bound_indices(meshdims, dom_idx=None, ndom_list=None, phys_bounds=True, dom_bounds=True):
+def get_bound_indices(
+    meshdims,
+    dom_idx=None,
+    ndom_list=None,
+    phys_bounds=True,
+    phys_rate=1,
+    dom_bounds=True,
+    dom_rate=1,
+):
 
     # for decomposed mesh
     if dom_idx is not None:
@@ -46,23 +54,23 @@ def get_bound_indices(meshdims, dom_idx=None, ndom_list=None, phys_bounds=True, 
 
         if dom_idx is not None:
             if i == 0:
-                phys_samples += samples_left
+                phys_samples += samples_left[::phys_rate]
             else:
-                dom_samples += samples_left
+                dom_samples += samples_left[::dom_rate]
             if i == (ndom_list[0] - 1):
-                phys_samples += samples_right
+                phys_samples += samples_right[::phys_rate]
             else:
-                dom_samples += samples_right
+                dom_samples += samples_right[::dom_rate]
             if j == 0:
-                phys_samples += samples_bot
+                phys_samples += samples_bot[::phys_rate]
             else:
-                dom_samples += samples_bot
+                dom_samples += samples_bot[::dom_rate]
             if j == (ndom_list[1] - 1):
-                phys_samples += samples_top
+                phys_samples += samples_top[::phys_rate]
             else:
-                dom_samples += samples_top
+                dom_samples += samples_top[::dom_rate]
         else:
-            phys_samples += samples_left + samples_top + samples_right + samples_bot
+            phys_samples += samples_left[::phys_rate] + samples_top[::phys_rate] + samples_right[::phys_rate] + samples_bot[::phys_rate]
 
     elif ndim == 3:
         raise ValueError("3D seed samples not implemented yet")
@@ -79,7 +87,9 @@ def sample_domain(
     basis=None,
     seed_qdeim=False,
     seed_phys_bounds=False,
+    seed_phys_rate=1,
     seed_dom_bounds=False,
+    seed_dom_rate=1,
     samp_phys_bounds=True,
     samp_dom_bounds=True,
     randseed=0,
@@ -89,6 +99,10 @@ def sample_domain(
 
     assert not (samp_phys_bounds and seed_phys_bounds)
     assert not (samp_dom_bounds and seed_dom_bounds)
+    if seed_phys_bounds:
+        assert seed_phys_rate > 0
+    if seed_dom_bounds:
+        assert seed_dom_rate > 0
 
     # monolithic
     if dom_idx is None:
@@ -111,12 +125,28 @@ def sample_domain(
 
     ncells = np.prod(meshdims)
 
+    # do bounds without subsampling for now
     all_ids = np.arange(ncells)
-    phys_bound_ids, dom_bound_ids = get_bound_indices(meshdims, dom_idx=dom_idx, ndom_list=ndom_list)
+    phys_bound_ids, dom_bound_ids = get_bound_indices(
+        meshdims,
+        dom_idx=dom_idx,
+        ndom_list=ndom_list
+    )
     interior_ids = np.setdiff1d(np.setdiff1d(all_ids, phys_bound_ids), dom_bound_ids)
     ncells_phys = len(phys_bound_ids)
     ncells_dom = len(dom_bound_ids)
     ncells_int  = len(interior_ids)
+
+    if seed_phys_bounds or seed_dom_bounds:
+        phys_bound_ids_samp, dom_bound_ids_samp = get_bound_indices(
+            meshdims,
+            dom_idx=dom_idx,
+            ndom_list=ndom_list,
+            phys_bounds=seed_phys_bounds,
+            phys_rate=seed_phys_rate,
+            dom_bounds=seed_dom_bounds,
+            dom_rate=seed_dom_rate,
+        )
 
     # "seed" sample indices
     points_seed = []
@@ -124,15 +154,15 @@ def sample_domain(
         # don't bother with separating boundaries for QDEIM
         points_seed += calc_qdeim_samples(basis, ncells)
     if seed_phys_bounds:
-        points_seed += phys_bound_ids
+        points_seed += phys_bound_ids_samp
     if seed_dom_bounds:
-        points_seed += dom_bound_ids
+        points_seed += dom_bound_ids_samp
     points_seed = list(np.unique(points_seed))
     npoints_seed = len(points_seed)
 
     # divvy up remaining cells
     npoints_tot = floor(ncells * percpoints)
-    assert npoints_tot >= npoints_seed
+    assert npoints_tot >= npoints_seed, f"{npoints_tot} < {npoints_seed}"
     npoints_remain = npoints_tot - npoints_seed
 
     samp_ratio_phys = ncells_phys / ncells
@@ -184,11 +214,11 @@ def sample_domain(
             samples = calc_eigenvec_samples(
                 basis, ncells,
                 npoints_seed+npoints_int+npoints_phys+npoints_dom,
-                points_seed=samples, search_cell_ids=phys_bound_ids
+                points_seed=samples, search_cell_ids=dom_bound_ids
             )
+        assert samples.shape[0] == (npoints_seed + npoints_int + npoints_phys + npoints_dom)
 
     samples = np.unique(samples)
-    assert samples.shape[0] == (npoints_seed + npoints_int + npoints_phys + npoints_dom)
     outfile = os.path.join(outdir, "sample_mesh_gids.dat")
     print(f"Saving sample mesh global indices to {outfile}")
     np.savetxt(outfile, samples, fmt='%8i')
@@ -203,7 +233,9 @@ def gen_sample_mesh(
     nmodes=None,
     seed_qdeim=False,
     seed_phys_bounds=False,
+    seed_phys_rate=1,
     seed_dom_bounds=False,
+    seed_dom_rate=1,
     samp_phys_bounds=True,
     samp_dom_bounds=True,
     randseed=0,
@@ -216,7 +248,7 @@ def gen_sample_mesh(
     if seed_qdeim or (samptype in ["eigenvec", "gnat"]):
         load_basis = True
         assert basis_dir is not None
-        assert os.path.isdir(basis_dir)
+        assert os.path.isdir(basis_dir), f"No basis directory at {basis_dir}"
         assert nmodes is not None
 
     if not os.path.isdir(outdir):
@@ -243,6 +275,7 @@ def gen_sample_mesh(
             basis=basis,
             seed_qdeim=seed_qdeim,
             seed_phys_bounds=seed_phys_bounds,
+            seed_phys_rate=seed_phys_rate,
             seed_dom_bounds=False,
             samp_phys_bounds=samp_phys_bounds,
             samp_dom_bounds=False,
@@ -280,7 +313,9 @@ def gen_sample_mesh(
                 basis=basis_list[dom_idx],
                 seed_qdeim=seed_qdeim,
                 seed_phys_bounds=seed_phys_bounds,
+                seed_phys_rate=seed_phys_rate,
                 seed_dom_bounds=seed_dom_bounds,
+                seed_dom_rate=seed_dom_rate,
                 samp_phys_bounds=samp_phys_bounds,
                 samp_dom_bounds=samp_dom_bounds,
                 randseed=randseed+dom_idx,
