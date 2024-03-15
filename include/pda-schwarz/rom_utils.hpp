@@ -243,90 +243,99 @@ auto reduce_vector_on_stencil_mesh(
     return result;
 }
 
-template<class scalar_t>
-class IdentityWeigher{
-
-public:
-
-    IdentityWeigher(...) {}
-
-    template<class T>
-    void operator()(const Eigen::MatrixBase<T> & operand,
-            Eigen::MatrixBase<T> & result) const
-    {
-        // since this is an identity, just do a deep copy
-        result = operand;
-    }
-
-};
-
 // Gappy POD weighting operator passed to create_gauss_newton_solver()
 // Computes operator ([ S * Psi ]^+)^T * [ S * Psi ]^+,
 //      where S is the sample matrix and Psi is the gappy POD regressor matrix of choice
 // `nmodes` can be different than the number of modes in the trial basis
 template<class scalar_t>
-class GappyPODWeigher {
+class Weigher {
 
     using matrix_type = Eigen::Matrix<scalar_t, -1, -1, Eigen::ColMajor>;
 
 public:
 
-    GappyPODWeigher(
+    Weigher(
+        const std::string & weigher_type,
         const std::string & basisfile,
         const std::string & samplefile,
         const int nmodes,
         const int numDofsPerCell)
     {
-
-        // compute Z * Phi
         namespace pdas = pdaschwarz;
-        auto basis_gpod = pdas::read_matrix_from_binary<scalar_t>(basisfile, nmodes);
-        const auto sampleGids = pdas::create_cell_gids_vector_and_fill_from_ascii(samplefile);
-        auto basis_sample = pdas::reduce_matrix_on_stencil_mesh(basis_gpod, sampleGids, numDofsPerCell);
 
-        // size matrices
-        std::size_t numsamps = sampleGids.rows();
-        matrix_type basis_sample_pinv;
-        basis_sample_pinv.resize(nmodes, numsamps);
-        gpod_operator.resize(numsamps, numsamps);
+        m_weigher_type = weigher_type;
 
-        // compute A = pinv(Z * Phi)
-        basis_sample_pinv = basis_sample.completeOrthogonalDecomposition().pseudoInverse();
+        if (weigher_type == "identity") {
+            // nothing needed for identity
+        }
+        else if (weigher_type == "gappy_pod") {
 
-        // compute A^T * A
-        pressio::ops::product(
-            ::pressio::transpose(), ::pressio::nontranspose(),
-            1., basis_sample_pinv, basis_sample_pinv,
-            0., gpod_operator
-        );
+            // compute Z * Phi
+            auto basis_gpod = pdas::read_matrix_from_binary<scalar_t>(basisfile, nmodes);
+            const auto sampleGids = pdas::create_cell_gids_vector_and_fill_from_ascii(samplefile);
+            auto basis_sample = pdas::reduce_matrix_on_stencil_mesh(basis_gpod, sampleGids, numDofsPerCell);
 
+            // size matrices
+            std::size_t numsamps = sampleGids.rows();
+            matrix_type basis_sample_pinv;
+            basis_sample_pinv.resize(nmodes, numsamps);
+            m_gpod_operator.resize(numsamps, numsamps);
+
+            // compute A = pinv(Z * Phi)
+            basis_sample_pinv = basis_sample.completeOrthogonalDecomposition().pseudoInverse();
+
+            // compute A^T * A
+            pressio::ops::product(
+                ::pressio::transpose(), ::pressio::nontranspose(),
+                1., basis_sample_pinv, basis_sample_pinv,
+                0., m_gpod_operator
+            );
+        }
+        else {
+            throw std::runtime_error("Invalid weigher_type: " + weigher_type);
+        }
     }
 
     // operator on residual
     void operator()(const Eigen::Matrix<scalar_t, -1, 1> & operand,
                     Eigen::Matrix<scalar_t, -1, 1> & result) const
     {
-        pressio::ops::product(
-            ::pressio::nontranspose(),
-            1., gpod_operator, operand,
-            0., result
-        );
+        if (m_weigher_type == "identity") {
+            // copy
+            result = operand;
+        }
+        else if (m_weigher_type == "gappy_pod") {
+            // multiply weighting operator
+            pressio::ops::product(
+                ::pressio::nontranspose(),
+                1., m_gpod_operator, operand,
+                0., result
+            );
+        }
     }
 
     // operator on Jacobian
     void operator()(const Eigen::Matrix<scalar_t, -1, -1> & operand,
                     Eigen::Matrix<scalar_t, -1, -1> & result) const
     {
+        if (m_weigher_type == "identity") {
+            // copy
+            result = operand;
+        }
+        else if (m_weigher_type == "gappy_pod") {
+            // multiply weighting operator
             pressio::ops::product(
                 ::pressio::nontranspose(), ::pressio::nontranspose(),
-                1., gpod_operator, operand,
+                1., m_gpod_operator, operand,
                 0., result
             );
+        }
     }
 
 private:
 
-    matrix_type gpod_operator;
+    std::string m_weigher_type;
+    matrix_type m_gpod_operator;
 
 };
 

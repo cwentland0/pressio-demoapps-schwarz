@@ -46,7 +46,7 @@ int main()
     // Gappy POD definition
     std::string basisRoot_gpod = "./trial_space/basis";
     std::vector<int> nmodesVec_gpod(4, 30);
-    using weigh_t = typename pdas::GappyPODWeigher<app_t::scalar_type>;
+    std::string weigher_type = "gappy_pod";
 
     // +++++ END USER INPUTS +++++
 
@@ -57,10 +57,10 @@ int main()
     for (int domIdx = 0; domIdx < meshPathsFull.size(); ++ domIdx) {
         samplePaths.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx) + "/sample_mesh_gids.dat");
     }
-    auto subdomains = pdas::create_subdomains<app_t, weigh_t>(
+    auto subdomains = pdas::create_subdomains<app_t>(
         meshObjsFull, *tiling, probId, schemeVec, orderVec,
         domFlagVec, transRoot, basisRoot, nmodesVec, icFlag,
-        samplePaths, basisRoot_gpod, nmodesVec_gpod);
+        samplePaths, weigher_type, basisRoot_gpod, nmodesVec_gpod);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observer

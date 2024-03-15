@@ -82,7 +82,7 @@ int main()
     linear_solver_t linearSolver;
 
     // Gauss-Newton with gappy POD weighting
-    auto weighter = pdas::GappyPODWeigher<scalar_type>(basisfile, sampleFile, nmodes_gpod, numDofsPerCell);
+    auto weighter = pdas::Weigher<scalar_type>("gappy_pod", basisfile, sampleFile, nmodes_gpod, numDofsPerCell);
     auto solver = pressio::create_gauss_newton_solver(stepper, linearSolver, weighter);
     solver.setStopCriterion(pnlins::Stop::WhenAbsolutel2NormOfGradientBelowTolerance);
     solver.setStopTolerance(1e-5);

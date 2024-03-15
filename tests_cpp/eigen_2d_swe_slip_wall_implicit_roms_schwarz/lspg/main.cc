@@ -41,14 +41,12 @@ int main()
     const double abs_err_tol = 1e-11;
     const double rel_err_tol = 1e-11;
 
-    using weigh_t = typename pdas::IdentityWeigher<app_t::scalar_type>;
-
     // +++++ END USER INPUTS +++++
 
     // tiling, meshes, and decomposition
     auto tiling = std::make_shared<pdas::Tiling>(meshRoot);
     auto [meshObjs, meshPaths] = pdas::create_meshes(meshRoot, tiling->count());
-    auto subdomains = pdas::create_subdomains<app_t, weigh_t>(
+    auto subdomains = pdas::create_subdomains<app_t>(
         meshObjs, *tiling, probId, schemeVec, orderVec,
         domFlagVec, transRoot, basisRoot, nmodesVec, icFlag);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
