@@ -52,7 +52,7 @@ auto read_matrix_from_binary(const std::string & fileName, int numColsToRead) {
         throw std::runtime_error("ERROR READING binary file");
     }
     else{
-        std::cerr << fin.gcount() << " bytes read\n";
+        std::cout << fin.gcount() << " bytes read\n";
     }
     fin.close();
     return M;
