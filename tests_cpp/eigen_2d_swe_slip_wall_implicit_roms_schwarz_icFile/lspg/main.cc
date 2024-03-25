@@ -1,9 +1,7 @@
-#include <chrono>
+
 #include "pressiodemoapps/swe2d.hpp"
 #include "pda-schwarz/schwarz.hpp"
-#include "pda-schwarz/rom_utils.hpp"
 #include "../../observer.hpp"
-
 
 int main()
 {
@@ -13,8 +11,7 @@ int main()
     namespace pode = pressio::ode;
 
     // +++++ USER INPUTS +++++
-    std::string meshRootFull = "./full_mesh_decomp";
-    std::string meshRootHyper = "./sample_mesh_decomp";
+    std::string meshRoot = "./mesh_decomp";
     std::string obsRoot = "swe_slipWall2d_solution";
     const int obsFreq = 1;
 
@@ -29,16 +26,17 @@ int main()
 #endif
     std::vector<pode::StepScheme> schemeVec(4, pode::StepScheme::BDF1);
     const int icFlag  = 1;
+    std::string icFileRoot = "./ic_file";
     using app_t = pdas::swe2d_app_type;
 
     // ROM definition
-    std::vector<std::string> domFlagVec(4, "LSPGHyper");
+    std::vector<std::string> domFlagVec(4, "LSPG");
     std::string transRoot = "./trial_space/center";
     std::string basisRoot = "./trial_space/basis";
     std::vector<int> nmodesVec(4, 25);
 
     // time stepping
-    const double tf = 1.0;
+    const double tf = 0.8;
     std::vector<double> dt(1, 0.02);
     const int convergeStepMax = 10;
     const double abs_err_tol = 1e-11;
@@ -47,16 +45,11 @@ int main()
     // +++++ END USER INPUTS +++++
 
     // tiling, meshes, and decomposition
-    auto tiling = std::make_shared<pdas::Tiling>(meshRootFull);
-    auto [meshObjsFull, meshPathsFull] = pdas::create_meshes(meshRootFull, tiling->count());
-    std::vector<std::string> samplePaths;
-    for (int domIdx = 0; domIdx < meshPathsFull.size(); ++ domIdx) {
-        samplePaths.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx) + "/sample_mesh_gids.dat");
-    }
+    auto tiling = std::make_shared<pdas::Tiling>(meshRoot);
+    auto [meshObjs, meshPaths] = pdas::create_meshes(meshRoot, tiling->count());
     auto subdomains = pdas::create_subdomains<app_t>(
-        meshObjsFull, *tiling, probId, schemeVec, orderVec,
-        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, "",
-        samplePaths);
+        meshObjs, *tiling, probId, schemeVec, orderVec,
+        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, icFileRoot);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observer
@@ -88,8 +81,8 @@ int main()
             convergeStepMax
         );
         const auto runtimeEnd = std::chrono::high_resolution_clock::now();
-        const auto nsDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(runtimeEnd - runtimeStart);
-        const double secsElapsed = static_cast<double>(nsDuration.count()) * 1e-9;
+        std::chrono::duration<double, std::milli> duration = runtimeEnd - runtimeStart;
+        obs_time(duration.count() * 1e-3, numSubiters);
 
         time += decomp.m_dtMax;
 
@@ -100,10 +93,6 @@ int main()
                 obsVec[domIdx](stepWrap, time, *decomp.m_subdomainVec[domIdx]->getStateFull());
             }
         }
-
-        // runtime observer
-        obs_time(secsElapsed, numSubiters);
-
     }
 
     return 0;

@@ -98,6 +98,17 @@ auto read_vector_from_ascii(const std::string & fileName)
     return v;
 }
 
+template<class MatType>
+void write_matrix_to_binary(const std::string & outfile, MatType outmat)
+{
+    std::ofstream out(outfile.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+    typename MatType::Index rows=outmat.rows(), cols=outmat.cols();
+    out.write((char*) (&rows), sizeof(typename MatType::Index));
+    out.write((char*) (&cols), sizeof(typename MatType::Index));
+    out.write((char*) outmat.data(), rows*cols*sizeof(typename MatType::Scalar) );
+    out.close();
+}
+
 // pretty much everything below this is ripped directly from pressio-tutorials
 template <typename T = int32_t>
 auto create_cell_gids_vector_and_fill_from_ascii(const std::string & fileName)

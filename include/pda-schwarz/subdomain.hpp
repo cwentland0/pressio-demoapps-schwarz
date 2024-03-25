@@ -95,6 +95,7 @@ class SubdomainFOM: public SubdomainBase<mesh_t, typename app_type::state_type>
 
 public:
     using app_t   = app_type;
+    using scalar_t = typename app_t::scalar_type;
     using graph_t = typename mesh_t::graph_t;
     using state_t = typename app_t::state_type;
     using jacob_t = typename app_t::jacobian_type;
@@ -121,7 +122,8 @@ public:
         pressio::ode::StepScheme odeScheme,
         pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
-        const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams)
+        const std::string & icFileRoot,
+        const std::unordered_map<std::string, scalar_t> & userParams)
     : m_domIdx(domainIndex)
     , m_mesh(&mesh)
     , m_app(std::make_shared<app_t>(pda::create_problem_eigen(
@@ -139,6 +141,19 @@ public:
         pda::resize(m_sampleGids, m_mesh->sampleMeshSize());
         for (int i = 0; i < m_mesh->sampleMeshSize(); ++i) {
             m_sampleGids(i) = i;
+        }
+
+        if (!(icFileRoot.empty())) {
+            // load from file
+            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            auto instate = read_vector_from_binary<scalar_t>(icFile);
+            int nrows = instate.rows();
+            if (nrows == m_state.rows()) {
+                m_state = instate;
+            }
+            else {
+                throw std::runtime_error("Invalid icFile dimensions: " + std::to_string(nrows));
+            }
         }
 
         m_nonlinSolver.setStopTolerance(1e-5);
@@ -269,6 +284,7 @@ public:
         pressio::ode::StepScheme odeScheme,
         pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
+        const std::string icFileRoot,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
         const std::string & basisRoot,
@@ -294,10 +310,31 @@ public:
             m_sampleGids(i) = i;
         }
 
-        // project initial conditions
-        auto u = pressio::ops::clone(m_state);
-        pressio::ops::update(u, 0., m_state, 1, m_trialSpace.translationVector(), -1);
-        pressio::ops::product(::pressio::transpose(), 1., m_trialSpace.basis(), u, 0., m_stateReduced);
+        // initial conditions
+        if (icFileRoot.empty()) {
+            // project full state initial conditions
+            auto u = pressio::ops::clone(m_state);
+            pressio::ops::update(u, 0., m_state, 1, m_trialSpace.translationVector(), -1);
+            pressio::ops::product(::pressio::transpose(), 1., m_trialSpace.basis(), u, 0., m_stateReduced);
+        }
+        else {
+            // load from file
+            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            auto instate = read_vector_from_binary<scalar_t>(icFile);
+            int nrows = instate.rows();
+            if (nrows == m_stateReduced.rows()) {
+                m_stateReduced = instate;
+            }
+            else if (nrows == m_state.rows()) {
+                // project full state initial conditions
+                auto u = pressio::ops::clone(instate);
+                pressio::ops::update(u, 0., instate, 1, m_trialSpace.translationVector(), -1);
+                pressio::ops::product(::pressio::transpose(), 1., m_trialSpace.basis(), u, 0., m_stateReduced);
+            }
+            else {
+                throw std::runtime_error("Invalid icFile dimensions: " + std::to_string(nrows));
+            }
+        }
         m_trialSpace.mapFromReducedState(m_stateReduced, m_state);
 
     }
@@ -429,13 +466,14 @@ public:
         pressio::ode::StepScheme odeScheme,
         pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
+        const std::string & icFileRoot,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
         const std::string & basisRoot,
         const int nmodes)
     : base_t(domainIndex, mesh,
              bcLeft, bcFront, bcRight, bcBack,
-             probId, odeScheme, fluxOrder, icflag, userParams,
+             probId, odeScheme, fluxOrder, icflag, icFileRoot, userParams,
              transRoot, basisRoot, nmodes)
     , m_problem(plspg::create_unsteady_problem(odeScheme, this->m_trialSpace, *(this->m_app)))
     , m_stepper(m_problem.lspgStepper())
@@ -493,6 +531,7 @@ public:
         pressio::ode::StepScheme odeScheme,
         pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
+        const std::string & icFileRoot,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
         const std::string & basisRoot,
@@ -527,10 +566,31 @@ public:
 
         m_fullMeshDims = calc_mesh_dims(*m_meshFull);
 
-        // project initial conditions
-        auto u = pressio::ops::clone(m_stateFull);
-        pressio::ops::update(u, 0., m_stateFull, 1, m_trialSpaceFull.translationVector(), -1);
-        pressio::ops::product(::pressio::transpose(), 1., m_trialSpaceFull.basis(), u, 0., m_stateReduced);
+        // initial conditions
+        if (icFileRoot.empty()) {
+            // project full state initial conditions
+            auto u = pressio::ops::clone(m_stateFull);
+            pressio::ops::update(u, 0., m_stateFull, 1, m_trialSpaceFull.translationVector(), -1);
+            pressio::ops::product(::pressio::transpose(), 1., m_trialSpaceFull.basis(), u, 0., m_stateReduced);
+        }
+        else {
+            // load from file
+            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            auto instate = read_vector_from_binary<scalar_t>(icFile);
+            int nrows = instate.rows();
+            if (nrows == m_stateReduced.rows()) {
+                m_stateReduced = instate;
+            }
+            else if (nrows == m_stateFull.rows()) {
+                // project full state initial conditions
+                auto u = pressio::ops::clone(instate);
+                pressio::ops::update(u, 0., instate, 1, m_trialSpaceFull.translationVector(), -1);
+                pressio::ops::product(::pressio::transpose(), 1., m_trialSpaceFull.basis(), u, 0., m_stateReduced);
+            }
+            else {
+                throw std::runtime_error("Invalid icFile dimensions: " + std::to_string(nrows));
+            }
+        }
         m_trialSpaceFull.mapFromReducedState(m_stateReduced, m_stateFull);
 
     }
@@ -748,6 +808,7 @@ public:
         pressio::ode::StepScheme odeScheme,
         pda::InviscidFluxReconstruction fluxOrder,
         const int icflag,
+        const std::string & icFileRoot,
         const std::unordered_map<std::string, typename mesh_t::scalar_type> & userParams,
         const std::string & transRoot,
         const std::string & basisRoot,
@@ -758,7 +819,7 @@ public:
         const int nmodes_gpod)
     : base_t(domainIndex, meshFull,
              bcLeft, bcFront, bcRight, bcBack,
-             probId, odeScheme, fluxOrder, icflag, userParams,
+             probId, odeScheme, fluxOrder, icflag, icFileRoot, userParams,
              transRoot, basisRoot, nmodes,
              sampleFile)
     {
@@ -868,7 +929,7 @@ auto create_subdomains(
         meshes, tiling,
         probId, odeSchemes, fluxOrders,
         domFlagVec, "", "", nmodesVec,
-        icFlag, samplePaths,
+        icFlag, "", samplePaths,
         "identity", "", nmodesVec_gpod,
         userParams);
 
@@ -889,6 +950,7 @@ auto create_subdomains(
     const std::string & basisRoot,
     const std::vector<int> & nmodesVec,
     int icFlag = 0,
+    const std::string & icFileRoot = "",
     const std::vector<std::string> & samplePaths = {},
     const std::string & weigher_type = "identity",
     const std::string & basisRoot_gpod = "",
@@ -964,20 +1026,20 @@ auto create_subdomains(
             result.emplace_back(std::make_shared<SubdomainFOM<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams));
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, icFileRoot, userParams));
         }
         else if (domFlagVec[domIdx] == "LSPG") {
             result.emplace_back(std::make_shared<SubdomainLSPG<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, icFileRoot, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx]));
         }
         else if (domFlagVec[domIdx] == "LSPGHyper") {
             result.emplace_back(std::make_shared<SubdomainLSPGHyper<mesh_t, app_t, prob_t>>(
                 domIdx, meshes[domIdx],
                 bcLeft, bcFront, bcRight, bcBack,
-                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, userParams,
+                probId, odeSchemes[domIdx], fluxOrders[domIdx], icFlag, icFileRoot, userParams,
                 transRoot, basisRoot, nmodesVec[domIdx],
                 samplePaths[domIdx],
                 weigher_type, basisRoot_gpod, nmodesVec_gpod_in[domIdx]));
