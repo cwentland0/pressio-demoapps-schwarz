@@ -288,19 +288,11 @@ public:
 
             // size matrices
             std::size_t numsamps = sampleGids.rows();
-            matrix_type basis_sample_pinv;
-            basis_sample_pinv.resize(nmodes, numsamps);
-            m_gpod_operator.resize(numsamps, numsamps);
+            m_gpod_operator.resize(nmodes, numsamps);
 
             // compute A = pinv(Z * Phi)
-            basis_sample_pinv = basis_sample.completeOrthogonalDecomposition().pseudoInverse();
+            m_gpod_operator = basis_sample.completeOrthogonalDecomposition().pseudoInverse();
 
-            // compute A^T * A
-            pressio::ops::product(
-                ::pressio::transpose(), ::pressio::nontranspose(),
-                1., basis_sample_pinv, basis_sample_pinv,
-                0., m_gpod_operator
-            );
         }
         else {
             throw std::runtime_error("Invalid weigher_type: " + weigher_type);
