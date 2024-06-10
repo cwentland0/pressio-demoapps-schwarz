@@ -56,8 +56,6 @@ int main(int argc, char *argv[])
     const double abs_err_tol = 1e-11;
     const double rel_err_tol = 1e-11;
 
-    using weigh_t = typename pdas::IdentityWeigher<app_t::scalar_type>;
-
     // +++++ END USER INPUTS +++++
 
     auto tiling = std::make_shared<pdas::Tiling>(meshRootFull);
@@ -66,9 +64,9 @@ int main(int argc, char *argv[])
     for (int domIdx = 0; domIdx < meshPathsFull.size(); ++ domIdx) {
         samplePaths.emplace_back(meshRootHyper + "/domain_" + std::to_string(domIdx) + "/sample_mesh_gids.dat");
     }
-    auto subdomains = pdas::create_subdomains<app_t, weigh_t>(
+    auto subdomains = pdas::create_subdomains<app_t>(
         meshObjsFull, *tiling, probId, schemeVec, orderVec,
-        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, samplePaths);
+        domFlagVec, transRoot, basisRoot, nmodesVec, icFlag, "", samplePaths);
     pdas::SchwarzDecomp decomp(subdomains, tiling, dt);
 
     // observers
