@@ -26,7 +26,7 @@ int main()
 #endif
     std::vector<pode::StepScheme> schemeVec(4, pode::StepScheme::BDF1);
     const int icFlag  = 1;
-    std::string icFileRoot = "./ic_file";
+    std::string icFileRoot = "./ic_file_";
     using app_t = pdas::swe2d_app_type;
 
     // ROM definition
