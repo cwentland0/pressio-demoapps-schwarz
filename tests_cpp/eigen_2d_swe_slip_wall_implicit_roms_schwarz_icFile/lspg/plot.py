@@ -44,6 +44,7 @@ rom_data, _ = load_field_data(
     "swe_slipWall2d_solution",
     3,
     meshdir="./mesh_decomp",
+    merge_decomp=True,
 )
 
 plot_contours(
