@@ -81,6 +81,7 @@ public:
     virtual void finalize_subdomain(std::string &) = 0;
     virtual state_t * getStateStencil() = 0;
     virtual state_t * getStateFull() = 0;
+    virtual state_t * getStateReduced() = 0;
     virtual state_t * getStateBCs() = 0;
     virtual void setBCPointer(pda::impl::GhostRelativeLocation, state_t * ) = 0;
     virtual void setBCPointer(pda::impl::GhostRelativeLocation, graph_t *) = 0;
@@ -145,7 +146,7 @@ public:
 
         if (!(icFileRoot.empty())) {
             // load from file
-            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            std::string icFile = icFileRoot + std::to_string(domainIndex) + ".bin";
             auto instate = read_vector_from_binary<scalar_t>(icFile);
             int nrows = instate.rows();
             if (nrows == m_state.rows()) {
@@ -156,7 +157,8 @@ public:
             }
         }
 
-        m_nonlinSolver.setStopTolerance(1e-5);
+        m_nonlinSolver.setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
+        m_nonlinSolver.setStopTolerance(1e-7);
     }
 
     state_t & getLastStateInHistory() final { return m_stateHistVec.back(); }
@@ -171,6 +173,10 @@ public:
     state_t * getStateBCs() final { return &m_stateBCs; }
     state_t * getStateStencil() final { return &m_state; }
     state_t * getStateFull() final { return &m_state; }
+    state_t * getStateReduced() final {
+        throw std::runtime_error("Called getStateReduced() on a FOM subdomain, fix");
+    }
+
     int getDofPerCell() const final { return m_app->numDofPerCell(); }
     const mesh_t & getMeshStencil() const final { return *m_mesh; }
     const mesh_t & getMeshFull() const final { return *m_mesh; }
@@ -319,7 +325,7 @@ public:
         }
         else {
             // load from file
-            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            std::string icFile = icFileRoot + std::to_string(domainIndex) + ".bin";
             auto instate = read_vector_from_binary<scalar_t>(icFile);
             int nrows = instate.rows();
             if (nrows == m_stateReduced.rows()) {
@@ -350,6 +356,8 @@ public:
     state_t * getStateBCs() final { return &m_stateBCs; }
     state_t * getStateStencil() final { return &m_state; }
     state_t * getStateFull() final { return &m_state; }
+    state_t * getStateReduced() final { return &m_stateReduced; }
+
     int getDofPerCell() const final { return m_app->numDofPerCell(); }
     const mesh_t & getMeshStencil() const final { return *m_mesh; }
     const mesh_t & getMeshFull() const final { return *m_mesh; }
@@ -481,6 +489,9 @@ public:
     , m_nonlinSolver(pressio::create_gauss_newton_solver(m_stepper, *m_linSolverObj))
     {
 
+        m_nonlinSolver.setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
+        m_nonlinSolver.setStopTolerance(1e-7);
+
     }
 
     void doStep(pode::StepStartAt<double> startTime, pode::StepCount step, pode::StepSize<double> dt) final {
@@ -575,7 +586,7 @@ public:
         }
         else {
             // load from file
-            std::string icFile = icFileRoot + "_" + std::to_string(domainIndex) + ".bin";
+            std::string icFile = icFileRoot + std::to_string(domainIndex) + ".bin";
             auto instate = read_vector_from_binary<scalar_t>(icFile);
             int nrows = instate.rows();
             if (nrows == m_stateReduced.rows()) {
@@ -609,6 +620,8 @@ public:
         m_trialSpaceFull.mapFromReducedState(m_stateReduced, m_stateFull);
         return &m_stateFull;
     }
+    state_t * getStateReduced() final { return &m_stateReduced; }
+
     int getDofPerCell() const final { return m_appHyper->numDofPerCell(); }
     const mesh_t & getMeshStencil() const final {
         if (!m_hyperMeshSet) {
@@ -693,7 +706,7 @@ public:
                                                          std::move(m_transHyper),
                                                          true));
 
-        m_stateStencil = m_appHyper->initialCondition();
+        updateFullState();
         init_bc_state();
 
     }
@@ -869,6 +882,9 @@ public:
 
         m_nonlinSolverHyper = std::make_shared<nonlinsolverHyp_t>
             (pressio::create_gauss_newton_solver(*m_stepperHyper, *m_linSolverObjHyper, *m_weigher));
+
+        m_nonlinSolverHyper->setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
+        m_nonlinSolverHyper->setStopTolerance(1e-7);
     }
 
 // TODO: to protected
@@ -977,15 +993,18 @@ auto create_subdomains(
     }
 
     // Gappy POD modes are a bit finicky
+    // TODO: generalize to finding substring "Hyper" if Galerkin implemented
     std::vector<int> nmodesVec_gpod_in(ndomains, 0);
-    if (nmodesVec_gpod.empty()) {
-        if (weigher_type != "identity") {
-            throw std::runtime_error("Got empty nmodesVec_gpod, must use identity weigher");
+    if (std::find(domFlagVec.begin(), domFlagVec.end(), "LSPGHyper") != domFlagVec.end()) {
+        if (nmodesVec_gpod.empty()) {
+            if (weigher_type != "identity") {
+                throw std::runtime_error("Got empty nmodesVec_gpod, must use identity weigher");
+            }
         }
-    }
-    else {
-        if (nmodesVec_gpod.size() != ndomains) { throw std::runtime_error("Incorrect number of Gappy POD mode counts"); }
-        nmodesVec_gpod_in = nmodesVec_gpod;
+        else {
+            if (nmodesVec_gpod.size() != ndomains) { throw std::runtime_error("Incorrect number of Gappy POD mode counts"); }
+            nmodesVec_gpod_in = nmodesVec_gpod;
+        }
     }
 
     // determine boundary conditions for each subdomain, specify app type

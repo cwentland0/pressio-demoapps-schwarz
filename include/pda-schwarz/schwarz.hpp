@@ -793,7 +793,7 @@ public:
 
             myerrs = {};
 #if defined SCHWARZ_ENABLE_OMP
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(static, 1)
 #endif
             for (int domIdx = 0; domIdx < ndomains; ++domIdx) {
                 domainControlLoop(domIdx, currentTime, outerStep, myerrs);
@@ -828,14 +828,14 @@ public:
             convergeStep++;
 
 #if defined SCHWARZ_ENABLE_OMP
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(static, 1)
 #endif
             for (int domIdx = 0; domIdx < ndomains; ++domIdx) {
                 broadcast_bcState(domIdx);
             }
 
 #if defined SCHWARZ_ENABLE_OMP
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(static, 1)
 #endif
             for (int domIdx = 0; domIdx < ndomains; ++domIdx){
                 m_subdomainVec[domIdx]->resetStateFromHistory();
