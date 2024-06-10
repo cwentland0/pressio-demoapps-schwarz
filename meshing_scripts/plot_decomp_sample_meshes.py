@@ -13,7 +13,7 @@ def make_subdomain_list(ndom_list, default=None):
     return [[[default for _ in range(ndom_list[2])] for _ in range(ndom_list[1])] for _ in range(ndom_list[0])]
 
 
-def main(decompdir, sampdir):
+def main(decompdir, sampdir, outdir=None):
 
     colors = ["r", "b", "c", "m"]
 
@@ -115,7 +115,12 @@ def main(decompdir, sampdir):
 
     ax.set_xlim([xmin_full, xmax_full])
     ax.set_ylim([ymin_full, ymax_full])
-    plt.show()
+    if outdir is None:
+        plt.show()
+    else:
+        outfile = os.path.join(outdir, "samp_decomp_mesh.png")
+        print(f"Saving image to {outfile}")
+        plt.savefig(outfile)
 
 if __name__ == "__main__":
 
@@ -132,7 +137,12 @@ if __name__ == "__main__":
         dest="sampdir",
         help="Full path to base directory of SAMPLED decomposed mesh.",
     )
+    parser.add_argument(
+        "--outDir", "--outdir", "--out_dir",
+        dest="outdir",
+        help="Full path to directory where image will be saved.",
+    )
 
     argobj = parser.parse_args()
 
-    main(argobj.decompdir, argobj.sampdir)
+    main(argobj.decompdir, argobj.sampdir, argobj.outdir)

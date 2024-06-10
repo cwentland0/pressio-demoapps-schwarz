@@ -1,8 +1,13 @@
 import os
+from copy import deepcopy
 import struct
 from math import floor
 
 import numpy as np
+
+
+def make_empty_domain_list(ndom_list):
+    return [[[None for _ in range(ndom_list[2])] for _ in range(ndom_list[1])] for _ in range(ndom_list[0])]
 
 
 def get_nested_decomp_dims(data_list):
@@ -296,7 +301,7 @@ def calc_mesh_bounds(meshdirs):
 
 def load_meshes(
     meshdir,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     """"""
 
@@ -356,7 +361,7 @@ def load_field_data(
     nvars,
     coords=None,
     meshdir=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     """Loading field data from PDA binaries
 
@@ -426,7 +431,7 @@ def load_unified_helper(
     datadirs=None,
     nvars=None,
     dataroot=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     # helper function for other functions that need to load mesh and data
     # checks inputs, returns list of data/meshes
@@ -451,12 +456,13 @@ def load_unified_helper(
     if meshlist is None:
         assert meshdirs is not None
         nmesh = len(meshdirs)
-        meshlist     = [None for _ in range(nmesh)]
+        meshlist_out  = [None for _ in range(nmesh)]
         meshlist_sub = [None for _ in range(nmesh)]
         for mesh_idx, meshdir in enumerate(meshdirs):
-            meshlist[mesh_idx], meshlist_sub[mesh_idx] = load_meshes(meshdir, merge_decomp=merge_decomp)
+            meshlist_out[mesh_idx], meshlist_sub[mesh_idx] = load_meshes(meshdir, merge_decomp=merge_decomp)
     else:
         nmesh = len(meshlist)
+        meshlist_out = meshlist
 
     # load data, if not provided
     if datalist is None:
@@ -473,7 +479,7 @@ def load_unified_helper(
         for data_idx, datadir in enumerate(datadirs):
             # is monolithic
             if meshlist_sub[data_idx] is None:
-                coords_in = meshlist[data_idx]
+                coords_in = meshlist_out[data_idx]
             else:
                 coords_in = meshlist_sub[data_idx]
             datalist[data_idx], datalist_sub[data_idx] = load_field_data(
@@ -484,11 +490,27 @@ def load_unified_helper(
                 meshdir=meshdirs[data_idx],
                 merge_decomp=merge_decomp,
             )
-    else:
+
+            # copy over if not merging decomposed data
+            if (meshlist_sub[data_idx] is not None) and (not merge_decomp):
+                datalist[data_idx] = deepcopy(datalist_sub[data_idx])
+
+    # only need to do anything else if we're merging decomposed data
+    elif merge_decomp and meshlist is None:
+
         ndata = len(datalist)
         assert nmesh == ndata
 
-    return meshlist, datalist
+        for data_idx, data in enumerate(datalist):
+            if isinstance(data, list):
+                _, overlap = load_info_domain(meshdirs[data_idx])
+                datalist[data_idx] = merge_domain_data(data, overlap)
+
+    else:
+        # already have datalist and meshlist, don't want to merge anything
+        pass
+
+    return meshlist_out, datalist
 
 
 def euler_calc_pressure(
@@ -499,7 +521,7 @@ def euler_calc_pressure(
     datadirs=None,
     nvars=None,
     dataroot=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
 
     _, datalist = load_unified_helper(

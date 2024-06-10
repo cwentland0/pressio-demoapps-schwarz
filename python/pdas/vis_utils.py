@@ -8,11 +8,9 @@ from pdas.data_utils import load_unified_helper, calc_mesh_bounds
 from pdas.prom_utils import load_pod_basis
 
 
-# mpl.rc("font", family="serif", size="10")
-mpl.rc("font", family="sans", size="10")
-mpl.rc("axes", labelsize="x-large")
-mpl.rc("figure", facecolor="w")
-mpl.rc("text", usetex=False)
+FONTSIZE_LEGEND = mpl.rcParams["legend.fontsize"]
+FONTSIZE_TITLE = mpl.rcParams["axes.titlesize"]
+FONTSIZE_AXISLABEL = mpl.rcParams["axes.labelsize"]
 
 
 def plot_contours(
@@ -32,14 +30,18 @@ def plot_contours(
     contourbounds=[None,None],
     draw_colorbar=True,
     plottime=10,
+    plotstart=0,
     plotskip=1,
     stopiter=-1,
     varlabel=None,
     plotbounds=False,
     bound_colors=None,
     figdim_base=[6.4, 4.8],
-    fontsize_scaling=1,
+    fontsize_title=18,
+    fontsize_axislabel=16,
+    fontsize_ticklabels=14,
     vertical=True,
+    fill_nan=False,
 ):
 
     # TODO: check dimension, slice if 3D
@@ -74,12 +76,37 @@ def plot_contours(
     if not isinstance(plotskip, list):
         plotskip = [plotskip] * ndata
     assert len(plotskip) == ndata
+    if not isinstance(plotstart, list):
+        plotstart = [plotstart] * ndata
+    assert len(plotstart) == ndata
 
-    # set up time plot progression
-    nt_min = np.infty
+    # downsample
     for data_idx, data in enumerate(datalist):
-        nt_min = min(nt_min, int(data.shape[-2] / plotskip[data_idx]))
-    pause_time = plottime / nt_min
+        datalist[data_idx] = datalist[data_idx][:, :, plotstart[data_idx]::plotskip[data_idx], :]
+
+    # fill with NaN to match if requested
+    if fill_nan:
+        nt_max = -np.infty
+        for data_idx, data in enumerate(datalist):
+            nt_max = max(nt_max, data.shape[-2])
+        pause_time = plottime / nt_max
+        nt_plot = nt_max
+
+        for data_idx, data in enumerate(datalist):
+            nt = data.shape[-2]
+            if (nt != nt_max):
+                append_shape = list(data.shape)
+                append_shape[2] = nt_max - nt
+                nan_arr = np.nan * np.zeros(tuple(append_shape))
+                datalist[data_idx] = np.concatenate((data, nan_arr.copy()), axis=-2)
+
+    # otherwise use minimum time length available
+    else:
+        nt_min = np.infty
+        for data_idx, data in enumerate(datalist):
+            nt_min = min(nt_min, data.shape[-2])
+        pause_time = plottime / nt_min
+        nt_plot = nt_min
 
     # set up axes
     if vertical:
@@ -102,9 +129,9 @@ def plot_contours(
     ticks = levels[::skiplevels]
 
     itercounter = 0
-    for t in range(0, nt_min):
+    for t in range(0, nt_plot):
 
-        print(f"Figure {t+1}/{nt_min}")
+        print(f"Figure {t+1}/{nt_plot}")
 
         for plotnum in range(ndata):
             ax[plotnum].cla()
@@ -114,7 +141,7 @@ def plot_contours(
                 cf = ax[plotnum].contourf(
                     meshlist[plotnum][:, :, 0],
                     meshlist[plotnum][:, :, 1],
-                    datalist[plotnum][:, :, t * plotskip[plotnum], varplot],
+                    datalist[plotnum][:, :, t, varplot],
                     levels=levels,
                     extend="both",
                 )
@@ -134,11 +161,11 @@ def plot_contours(
                             linestyle="--",
                         )
 
-            ax[plotnum].set_title(plotlabels[plotnum], fontsize=18*fontsize_scaling)
-            ax[plotnum].tick_params(axis='both', which='major', labelsize=14*fontsize_scaling)
+            ax[plotnum].set_title(plotlabels[plotnum], fontsize=fontsize_title)
+            ax[plotnum].tick_params(axis='both', which='major', labelsize=fontsize_ticklabels)
 
-        fig.supxlabel('x', fontsize=16*fontsize_scaling)
-        fig.supylabel('y', fontsize=16*fontsize_scaling)
+        fig.supxlabel('x', fontsize=fontsize_axislabel)
+        fig.supylabel('y', fontsize=fontsize_axislabel)
 
         if (t == 0) and draw_colorbar:
             plt.tight_layout()
@@ -154,9 +181,9 @@ def plot_contours(
                 cbar = fig.colorbar(cf, cax=cbar_ax, orientation="horizontal")
                 cbar.ax.xaxis.set_label_position('top')
             cbar.set_ticks(ticks)
-            cbar.ax.tick_params(labelsize=10*fontsize_scaling)
+            cbar.ax.tick_params(labelsize=fontsize_ticklabels)
             if varlabel is not None:
-                cbar.set_label(varlabel, fontsize=18*fontsize_scaling)
+                cbar.set_label(varlabel, fontsize=fontsize_title)
 
         if savefigs:
             plt.savefig(os.path.join(outdir, f'fig_{t}.png'))

@@ -379,7 +379,9 @@ def calc_eigenvec_samples(
     points_seed=[],
     search_cell_ids=None,
     randseed=0,
+    printrate=0.01,
 ):
+
     ndof_per_cell = round(basis.shape[0] / ncells)
     nmodes = basis.shape[-1]
 
@@ -398,7 +400,12 @@ def calc_eigenvec_samples(
     search_dof_ids  = np.concatenate([search_cell_ids * (i + 1) for i in range(ndof_per_cell)])
     ncells_search = len(search_cell_ids)
 
+    rateperc = int(numsamps * printrate)
     while samp_ids.shape[0] < numsamps:
+
+        if (samp_ids.shape[0] % rateperc) == 0:
+            print(f"Sampled {(samp_ids.shape[0] / numsamps) * 100:#.2f}% samples")
+
         dof_ids = np.concatenate([samp_ids * (i + 1) for i in range(ndof_per_cell)])
         basis_samp = basis[dof_ids, :]
         _, _, svecs_right = np.linalg.svd(basis_samp, full_matrices=False)

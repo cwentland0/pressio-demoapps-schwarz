@@ -1,12 +1,13 @@
-
+from copy import copy, deepcopy
 import numpy as np
 
-from pdas.data_utils import load_unified_helper
-
+from pdas.data_utils import get_nested_decomp_dims, load_info_domain, make_empty_domain_list
+from pdas.data_utils import load_unified_helper, load_meshes, decompose_domain_data
 
 def calc_shared_samp_interval(
     dtlist=None,
     samplist=None,
+    startlist=None,
     ndata=1,
 ):
     if (dtlist is not None) and (samplist is not None):
@@ -30,6 +31,11 @@ def calc_shared_samp_interval(
     else:
         sampintervals = np.ones(ndata, dtype=np.int32)
 
+    # make sure the starting index falls on an interval
+    if startlist is not None:
+        assert len(startlist) == ndata
+        assert all([(start % interval) == 0 for start, interval in zip(startlist, sampintervals)])
+
     return samplengths, sampintervals
 
 def calc_error_fields(
@@ -41,48 +47,111 @@ def calc_error_fields(
     dataroot=None,
     dtlist=None,
     samplist=None,
+    startlist_in=None,
+    mismatch_nan=False,
+    merge_decomp=False,
 ):
     # NOTE: the FIRST data datalist/datadirs element is treated as "truth"
 
-    # always merge decompositions for ease
-    _, datalist = load_unified_helper(
+    _, datalist_in = load_unified_helper(
         meshlist=meshlist,
         datalist=datalist,
         meshdirs=meshdirs,
         datadirs=datadirs,
         nvars=nvars,
         dataroot=dataroot,
-        merge_decomp=True,
+        merge_decomp=merge_decomp,
     )
-    ndata = len(datalist)
+    ndata = len(datalist_in)
     assert ndata > 1
-    ndim = datalist[0].ndim - 2
+    ndim = datalist_in[0].ndim - 2
+
+    # check if any datasets are decomposed, check for meshdirs required for decomposition
+    for data_idx, data in enumerate(datalist_in):
+        if isinstance(data, list):
+            assert meshdirs is not None
+            assert isinstance(meshdirs, list)
+            assert len(meshdirs) == ndata
+            assert isinstance(meshdirs[data_idx], str)
 
     # If samplist and dtlist provided, comparison interval is explicit
     # Otherwise, same dt and sampling interval assumed
     samplengths, sampintervals = calc_shared_samp_interval(
         dtlist=dtlist,
         samplist=samplist,
+        startlist=startlist_in,
         ndata=ndata,
     )
 
+    if startlist_in is None:
+        startlist = [0 for _ in range(ndata)]
+    else:
+        startlist = startlist_in
+
+
     # compute SIGNED errors (comparison - truth, not absolute)
+    nsamps = None
     errorlist = []
     for data_idx in range(1, ndata):
 
-        if ndim == 2:
-            errorlist.append(
-                datalist[data_idx][:, :, ::sampintervals[data_idx], :] - \
-                datalist[0][:, :, ::sampintervals[0], :]
-            )
-        else:
-            raise ValueError(f"Invalid ndim: {ndim}")
+        if isinstance(datalist_in[data_idx], list):
+            ndom_list, overlap = load_info_domain(meshdirs[data_idx])
+            _, meshlist_decomp = load_meshes(meshdirs[data_idx], merge_decomp=False)
 
-        # double check that everything matches up
-        if data_idx == 1:
-            nsamps = errorlist[-1].shape[-2]
+            datalist_fom = decompose_domain_data(datalist_in[0], meshlist_decomp, overlap, is_ts=True, is_ts_decomp=False)
+            datalist_comp = datalist_in[data_idx]
+
         else:
-            assert errorlist[-1].shape[-2] == nsamps
+            ndom_list = [1, 1, 1]
+            datalist_fom = [[[datalist_in[0]]]]
+            datalist_comp = [[[datalist_in[data_idx]]]]
+
+        ndomains = np.prod(ndom_list)
+
+        errorlist_doms = make_empty_domain_list(ndom_list)
+        for dom_idx in range(ndomains):
+            i = dom_idx % ndom_list[0]
+            j = int(dom_idx / ndom_list[0])
+            k = int(dom_idx / (ndom_list[0] * ndom_list[1]))
+
+            # short circuit any simulation that exploded
+            if np.isnan(datalist_comp[i][j][k]).any():
+                if ndim == 2:
+                    fomshape = datalist_fom[i][j][k][:, :, startlist[0]::sampintervals[0], :].shape
+                    error = np.empty(fomshape)
+                    error[:] = np.nan
+                else:
+                    raise ValueError(f"Invalid ndim: {ndim}")
+            else:
+                if ndim == 2:
+                    try:
+                        error = datalist_comp[i][j][k][:, :, startlist[data_idx]::sampintervals[data_idx], :] - \
+                            datalist_fom[i][j][k][:, :, startlist[0]::sampintervals[0], :]
+                    except ValueError as e:
+                        if mismatch_nan:
+                            fomshape = datalist_fom[i][j][k][:, :, startlist[0]::sampintervals[0], :].shape
+                            error = np.empty(fomshape)
+                            error[:] = np.nan
+                        else:
+                            print("===============")
+                            print("There was a dimension mismatch, check startlist and samplist")
+                            print("===============")
+                            raise(e)
+                else:
+                    raise ValueError(f"Invalid ndim: {ndim}")
+
+            # double check that everything matches up
+            if nsamps is None:
+                nsamps = error.shape[-2]
+            else:
+                assert error.shape[-2] == nsamps
+
+            errorlist_doms[i][j][k] = error.copy()
+
+        if ndomains == 1:
+            errorlist.append(errorlist_doms[0][0][0].copy())
+        else:
+            errorlist.append(deepcopy(errorlist_doms))
 
     # get sample times (ignoring any possible offset), for later plotting
     if (dtlist is not None) and (samplist is not None):
@@ -103,9 +172,12 @@ def calc_error_norms(
     dataroot=None,
     dtlist=None,
     samplist=None,
+    startlist=None,
     timenorm=False,
     spacenorm=False,
     relative=False,
+    mismatch_nan=False,
+    merge_decomp=False,
 ):
     assert timenorm or spacenorm
 
@@ -122,7 +194,7 @@ def calc_error_norms(
             datadirs=datadirs,
             nvars=nvars,
             dataroot=dataroot,
-            merge_decomp=True,
+            merge_decomp=merge_decomp,
         )
         # only need the truth value
         datatruth = datalist[0]
@@ -137,36 +209,51 @@ def calc_error_norms(
             dataroot=dataroot,
             dtlist=dtlist,
             samplist=samplist,
+            startlist_in=startlist,
+            mismatch_nan=mismatch_nan,
+            merge_decomp=merge_decomp,
         )
         nsamps = samptimes.shape[0]
     else:
         if not isinstance(errorlist, list):
             errorlist = [errorlist]
-        nsamps = errorlist[0].shape[-2]
+        if isinstance(errorlist[0], list):
+            nsamps = errorlist[0][0][0][0].shape[-2]
+        else:
+            nsamps = errorlist[0].shape[-2]
         assert all([error.shape[-2] == nsamps for error in errorlist])
         if samptimes is None:
             samptimes = np.arange(nsamps)
         else:
             assert samptimes.shape[0] == nsamps
 
-    ndim = errorlist[0].ndim - 2
+    if isinstance(errorlist[0], list):
+        ndim = errorlist[0][0][0][0].ndim - 2
+        nvars_in = errorlist[0][0][0][0].shape[-1]
+    else:
+        ndim = errorlist[0].ndim - 2
+        nvars_in = errorlist[0].shape[-1]
     space_axes = tuple(range(ndim))
     time_axis = ndim
 
     # need same sampling rate for time norm
-    if relative and timenorm:
+    if relative:
         _, sampintervals = calc_shared_samp_interval(
             dtlist=dtlist,
             samplist=samplist,
+            startlist=startlist,
             ndata=len(datalist),
         )
 
     # relative error scaling factors
     if relative:
+        if startlist is None:
+            startlist = [0]
+        datanorm = datatruth[:, :, startlist[0]::sampintervals[0], :]
         if timenorm:
-            relfacs = np.linalg.norm(datatruth[:, :, ::sampintervals[0], :], ord=2, axis=time_axis, keepdims=True)
+            relfacs = np.linalg.norm(datanorm, ord=2, axis=time_axis, keepdims=True)
         else:
-            relfacs = datatruth.copy()
+            relfacs = datanorm.copy()
         if spacenorm:
             relfacs = np.linalg.norm(relfacs, ord=2, axis=space_axes, keepdims=True)
     else:
@@ -175,13 +262,42 @@ def calc_error_norms(
     # compute norms
     for error_idx, error in enumerate(errorlist):
 
-        if np.isnan(error).any():
-            errorlist[error_idx] = 1.0
+        if isinstance(error, list):
+            ndom_list = get_nested_decomp_dims(error)
+            error_doms = error
         else:
+            ndom_list = [1, 1, 1]
+            error_doms = [[[error]]]
+
+        ndomains = np.prod(ndom_list)
+
+        errorlist_doms = make_empty_domain_list(ndom_list)
+        for dom_idx in range(ndomains):
+            i = dom_idx % ndom_list[0]
+            j = int(dom_idx / ndom_list[0])
+            k = int(dom_idx / (ndom_list[0] * ndom_list[1]))
+
+            error_dom = error_doms[i][j][k]
+
             if timenorm:
-                error = np.linalg.norm(error, ord=2, axis=time_axis, keepdims=True)
+                error_dom = np.sqrt(np.sum(np.square(error_dom), axis=time_axis, keepdims=True))
             if spacenorm:
-                error = np.linalg.norm(error, ord=2, axis=space_axes, keepdims=True)
-            errorlist[error_idx] = np.squeeze(error / relfacs)
+                error_dom = np.sqrt(np.sum(np.square(error_dom), axis=space_axes, keepdims=True))
+
+            if np.isnan(error_dom).any():
+                error_dom[:] = 1.0
+            else:
+                error_dom = error_dom / relfacs
+
+            error_dom = np.squeeze(error_dom)
+            if nvars_in == 1:
+                error_dom = np.expand_dims(error_dom, -1)
+
+            errorlist_doms[i][j][k] = copy(error_dom)
+
+        if ndomains == 1:
+            errorlist[error_idx] = copy(errorlist_doms[0][0][0])
+        else:
+            errorlist[error_idx] = deepcopy(errorlist_doms)
 
     return errorlist, samptimes
