@@ -1,0 +1,50 @@
+#!/bin/bash
+
+root_dir="/home/crwentl/research/code/pressio-proj/pressio-demoapps-schwarz"
+build_dir="build"
+test_dir="tests_cpp"
+
+ndoms=4
+
+# --------------
+
+declare -a goldroots
+
+declare -a schwarz_tests=(
+    "eigen_2d_euler_riemann_implicit_schwarz"
+    "eigen_2d_swe_slip_wall_implicit_schwarz"
+    "eigen_2d_swe_slip_wall_implicit_roms_schwarz/lspg"
+    "eigen_2d_swe_slip_wall_implicit_hproms_schwarz/lspg"
+    "eigen_2d_swe_slip_wall_implicit_mixed_schwarz/lspg"
+    "eigen_2d_swe_slip_wall_implicit_nonoverlap_dd"
+    "eigen_2d_swe_slip_wall_implicit_hproms_gpod_schwarz/lspg"
+    "eigen_2d_swe_slip_wall_implicit_roms_schwarz_icFile/lspg"
+)
+declare -a schwarz_orders=(
+    "firstorder"
+    "weno3"
+)
+
+# Schwarz tests
+for case_dir in "${schwarz_tests[@]}"; do
+    if [[ "${case_dir}" == *"euler"* ]]; then
+        goldroots=("p" "rho")
+    elif [[ "${case_dir}" == *"swe"* ]]; then
+        goldroots=("h")
+    else
+        echo "Invalid case_dir: ${case_dir}"
+        exit
+    fi
+
+    for order in "${schwarz_orders[@]}"; do
+        gold_dir="${root_dir}/${build_dir}/${test_dir}/${case_dir}/${order}"
+        targ_dir="${root_dir}/${test_dir}/${case_dir}/${order}"
+        for ((dom=0;dom<${ndoms};++dom)); do
+            for gold_root in "${goldroots[@]}"; do
+                gold_file="${gold_root}_${dom}.txt"
+                targ_file="${gold_root}_gold_${dom}.txt"
+                mv -v "${gold_dir}/${gold_file}" "${targ_dir}/${targ_file}"
+            done
+        done
+    done
+done
