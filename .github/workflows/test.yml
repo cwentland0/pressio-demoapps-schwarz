@@ -49,9 +49,11 @@ jobs:
       - name: Clone pressio repository
         uses: actions/checkout@v2
         with:
-          repository: Pressio/pressio
+          repository: cwentland0/pressio
+          #repository: Pressio/pressio
           path: pressio
-          ref: develop
+          ref: alt_gpod
+          #ref: develop
 
       - name: Clone pressio-demoapps repository, develop branch
         uses: actions/checkout@v2
