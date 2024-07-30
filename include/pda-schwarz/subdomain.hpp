@@ -706,6 +706,9 @@ public:
                                                          std::move(m_transHyper),
                                                          true));
 
+        // initialize stencil mesh state
+        m_stateStencil = reduce_vector_on_stencil_mesh(m_stateFull, m_stencilGids, m_appFull->numDofPerCell());
+
         updateFullState();
         init_bc_state();
 

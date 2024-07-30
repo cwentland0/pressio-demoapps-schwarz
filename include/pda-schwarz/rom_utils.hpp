@@ -308,6 +308,12 @@ public:
             result = operand;
         }
         else if (m_weigher_type == "gappy_pod") {
+
+            // ugly workaround for the fact that Wr and WJ are automatically sized to have numsamps rows
+            if (result.rows() != m_gpod_operator.rows()) {
+                result.resize(m_gpod_operator.rows(), result.cols());
+            }
+
             // multiply weighting operator
             pressio::ops::product(
                 ::pressio::nontranspose(),
@@ -326,6 +332,12 @@ public:
             result = operand;
         }
         else if (m_weigher_type == "gappy_pod") {
+
+            // ugly workaround for the fact that Wr and WJ are automatically sized to have numsamps rows
+            if (result.rows() != m_gpod_operator.rows()) {
+                result.resize(m_gpod_operator.rows(), result.cols());
+            }
+
             // multiply weighting operator
             pressio::ops::product(
                 ::pressio::nontranspose(), ::pressio::nontranspose(),
