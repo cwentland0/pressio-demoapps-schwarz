@@ -1,11 +1,10 @@
 import os
-from math import floor
 
 import numpy as np
 from scipy.linalg import svd
 
 from pdas.data_utils import load_meshes, load_info_domain, decompose_domain_data, merge_domain_data
-from pdas.data_utils import load_unified_helper, write_to_binary, read_from_binary
+from pdas.data_utils import load_unified_helper, write_to_binary, read_from_binary, make_empty_domain_list
 
 
 def center(data_in, centervec=None, method=None):
@@ -220,6 +219,7 @@ def load_pod_basis(
 
     # REMINDER: merging decomposed bases is NOT VALID
 
+    assert os.path.isdir(basisdir), f"No basis directory at {basisdir}"
     print(f"Loading basis from {basisdir}")
 
     out_tuple = ()
@@ -242,6 +242,11 @@ def load_pod_basis(
     elif os.path.isfile(os.path.join(basisdir, "basis_0.bin")):
         print("Decomposed basis detected")
 
+        if nmodes is not None:
+            if isinstance(nmodes, int):
+                nmodes = [nmodes] * 100
+            assert isinstance(nmodes, list)
+
         dom_idx = 0
         basis = []
         center = []
@@ -249,7 +254,7 @@ def load_pod_basis(
         svals = []
         while os.path.isfile(os.path.join(basisdir, f"basis_{dom_idx}.bin")):
             if return_basis:
-                basis_in = read_from_binary(os.path.join(basisdir, f"basis_{dom_idx}.bin"))[:, :nmodes]
+                basis_in = read_from_binary(os.path.join(basisdir, f"basis_{dom_idx}.bin"))[:, :nmodes[dom_idx]]
                 basis.append(basis_in.copy())
             if return_center:
                 center_in = read_from_binary(os.path.join(basisdir, f"center_{dom_idx}.bin"))
@@ -288,8 +293,13 @@ def load_reduced_data(
     centerroot,
     normroot,
     nmodes,
+    basis_in=None,
+    center_in=None,
+    norm_in=None,
+    merge_decomp=False,
 ):
 
+    assert os.path.isdir(datadir), f"No data directory at {datadir}"
     print(f"Loading data from {datadir}")
 
     # detect monolithic vs decomposed
@@ -301,12 +311,21 @@ def load_reduced_data(
         ndim = coords.shape[-1]
         meshdims = coords.shape[:-1]
 
-        basis_file = os.path.join(trialdir, basisroot + ".bin")
-        basis = read_from_binary(basis_file)[:, :nmodes]
-        center_file = os.path.join(trialdir, centerroot + ".bin")
-        center = read_from_binary(center_file)
-        norm_file = os.path.join(trialdir, normroot + ".bin")
-        norm = read_from_binary(norm_file)
+        if basis_in is None:
+            basis_file = os.path.join(trialdir, basisroot + ".bin")
+            basis = read_from_binary(basis_file)[:, :nmodes]
+        else:
+            basis = basis_in[:, :nmodes]
+        if center_in is None:
+            center_file = os.path.join(trialdir, centerroot + ".bin")
+            center = read_from_binary(center_file)
+        else:
+            center = center_in.copy()
+        if norm_in is None:
+            norm_file = os.path.join(trialdir, normroot + ".bin")
+            norm = read_from_binary(norm_file)
+        else:
+            norm = norm_in.copy()
 
         data_red = np.fromfile(os.path.join(datadir, fileroot + ".bin"))
         data_red = np.reshape(data_red, (nmodes, -1), order="F")
@@ -316,8 +335,65 @@ def load_reduced_data(
         data_full = np.reshape(data_full, ((nvars,) + meshdims + (nsnaps,)), order="F")
         data_full = np.transpose(data_full, tuple(np.arange(1,ndim+1)) + (ndim+1, 0,))
 
-    else:
+    elif os.path.isfile(os.path.join(datadir, fileroot + "_0.bin")):
 
+        print("Decomposed solution detected")
+
+        ndom_list, overlap = load_info_domain(meshdir)
+        coords, coords_sub = load_meshes(meshdir)
+        ndim = coords_sub[0][0][0].shape[-1]
+
+        assert isinstance(nmodes, list)
+        ndom = len(nmodes)
+
+        if any([val is None for val in [basis_in, center_in, norm_in]]):
+            basis, center, norm = load_pod_basis(
+                trialdir,
+                return_basis=True,
+                return_center=True,
+                return_norm=True,
+                nmodes=nmodes,
+            )
+        else:
+            basis  = [val.copy() for val in basis_in]
+            center = [val.copy() for val in center_in]
+            norm   = [val.copy() for val in norm_in]
+
+        assert len(basis) == ndom
+        assert len(center) == ndom
+        assert len(norm) == ndom
+
+        # truncate
+        for dom_idx in range(ndom):
+            basis[dom_idx] = basis[dom_idx][:, :nmodes[dom_idx]]
+
+        dom_idx = 0
+        data_full = make_empty_domain_list(ndom_list)
+        while os.path.isfile(os.path.join(datadir, fileroot + f"_{dom_idx}.bin")):
+
+            i = dom_idx % ndom_list[0]
+            j = int(dom_idx / ndom_list[0])
+            k = int(dom_idx / (ndom_list[0] * ndom_list[1]))
+            meshdims = coords_sub[i][j][k].shape[:-1]
+
+            data_red = np.fromfile(os.path.join(datadir, fileroot + f"_{dom_idx}.bin"))
+            data_red = np.reshape(data_red, (nmodes[dom_idx], -1), order="F")
+
+            data_full_in = center[dom_idx] + norm[dom_idx] * (basis[dom_idx] @ data_red)
+            nsnaps = data_full_in.shape[-1]
+            data_full_in = np.reshape(data_full_in, ((nvars,) + meshdims + (nsnaps,)), order="F")
+            data_full_in = np.transpose(data_full_in, tuple(np.arange(1,ndim+1)) + (ndim+1, 0,))
+
+            data_full[i][j][k] = data_full_in.copy()
+
+            dom_idx += 1
+
+        assert dom_idx == ndom
+
+        if merge_decomp:
+            data_full = merge_domain_data(data_full, overlap, is_ts=True)
+
+    else:
         raise ValueError(f"Could not find reduced data at {datadir}")
 
     return data_full
@@ -356,7 +432,7 @@ def project_single(
     data_flat = np.reshape(data_flat, (nvars,) + spatial_dims + (-1,), order="F")
     data_out = np.transpose(data_flat, tuple(np.arange(1,ndim+2)) + (0,))
 
-    return data_out
+    return data_out, data_red
 
 
 def calc_projection(
@@ -372,15 +448,16 @@ def calc_projection(
     center=None,
     norm=None,
     meshdir_decomp=None,
+    merge_decomp=False,
 ):
     # NOTE: this is ONE basis applied to MULTIPLE datasets
     # Data to be projected will always be monolithic/merged
     # Basis may be decomposed, solution will be decomposed before projection
-    # Output data will always be merged
 
     assert nmodes >= 1
 
     # load data (if not provided)
+    # always merge, will be decomposed later
     _, datalist = load_unified_helper(
         meshlist=meshlist,
         datalist=datalist,
@@ -444,15 +521,18 @@ def calc_projection(
                 j = int(dom_idx / ndom_list[0])
                 k = int(dom_idx / (ndom_list[0] * ndom_list[1]))
 
-                data_sub[i][j][k] = project_single(
+                data_sub[i][j][k], _ = project_single(
                     data_sub[i][j][k],
                     basis[dom_idx],
                     center[dom_idx],
                     norm[dom_idx],
                 )
 
-            # merge data
-            datalist_out.append(merge_domain_data(data_sub, overlap, is_ts=True))
+            if merge_decomp:
+                # merge data
+                datalist_out.append(merge_domain_data(data_sub, overlap, is_ts=True))
+            else:
+                datalist_out.append(data_sub)
 
     # with monolithic basis
     elif isinstance(basis, np.ndarray):
@@ -464,150 +544,15 @@ def calc_projection(
 
         # project data
         for data_idx, data in enumerate(datalist):
-            datalist_out.append(project_single(
+            data_out, _ = project_single(
                 datalist[data_idx],
                 basis,
                 center,
                 norm,
-            ))
+            )
+            datalist_out.append(data_out.copy())
 
     else:
         raise ValueError("Unexpected basis type")
 
     return datalist_out
-
-
-def get_bound_indices(meshdims):
-
-    samples_seed = []
-    ndim = len(meshdims)
-
-    if ndim == 1:
-        samples_seed += [0, meshdims[0]]
-
-    elif ndim == 2:
-        samples_seed += [i * meshdims[0] for i in range(meshdims[1])]  # left
-        samples_seed += [i for i in range((meshdims[1] - 1) * meshdims[0], meshdims[0] * meshdims[1])]  # top
-        samples_seed += [(meshdims[0] - 1) + i * meshdims[0] for i in range(meshdims[1])]  # right
-        samples_seed += [i for i in range(meshdims[0])]  # bottom
-    elif ndim == 3:
-        raise ValueError("3D seed samples not implemented yet")
-
-    return list(np.unique(samples_seed))
-
-
-def gen_sample_mesh(
-    samptype,
-    meshdir,
-    outdir,
-    samp_bounds=False,
-    percpoints=None,
-    npoints=None,
-    randseed=0,
-):
-    # expand as necessary
-    assert samptype in ["random"]
-
-    # for monolithic, can specify percentage or number, not both
-    assert (percpoints is not None) != (npoints is not None)
-
-    if percpoints is not None:
-        assert (percpoints > 0.0) and (percpoints <= 1.0)
-
-    if not os.path.isdir(outdir):
-        os.mkdir(outdir)
-
-    # get monolithic mesh dimensions
-    coords_full, coords_sub = load_meshes(meshdir)
-    ndim = coords_full.shape[-1]
-
-    # monolithic sample mesh
-    if coords_sub is None:
-
-        meshdims = coords_full.shape[:-1]
-        ncells = np.prod(meshdims)
-
-        # "seed" sample indices
-        points_seed = []
-        if samp_bounds:
-            points_seed += get_bound_indices(meshdims)
-        npoints_seed = len(points_seed)
-
-        if percpoints is not None:
-            npoints = floor(ncells * percpoints)
-
-        assert npoints > 0
-        assert npoints <= ncells
-        assert npoints >= npoints_seed
-
-        if samptype == "random":
-            samples = gen_random_samples(0, ncells-1, npoints, randseed=randseed, points_seed=points_seed)
-
-        outfile = os.path.join(outdir, "sample_mesh_gids.dat")
-        print(f"Saving sample mesh global indices to {outfile}")
-        np.savetxt(outfile, samples, fmt='%8i')
-
-    # decomposed sample mesh
-    else:
-        # decomposed only works with percentage, for now
-        assert percpoints is not None
-
-        ndom_list, _ = load_info_domain(meshdir)
-        ndomains = np.prod(ndom_list)
-
-        for dom_idx in range(ndomains):
-            i = dom_idx % ndom_list[0]
-            j = int(dom_idx / ndom_list[0])
-            k = int(dom_idx / (ndom_list[0] * ndom_list[1]))
-
-            coords_local = coords_sub[i][j][k]
-            meshdims = coords_local.shape[:-1]
-            ncells = np.prod(meshdims)
-
-            # "seed" sample indices
-            points_seed = []
-            if samp_bounds:
-                points_seed += get_bound_indices(meshdims)
-            npoints_seed = len(points_seed)
-
-            # TODO: adjust this if enabling using npoints
-            npoints = floor(ncells * percpoints)
-
-            if samptype == "random":
-                # have to perturb random seed so sampling isn't the same in uniform subdomains
-                samples = gen_random_samples(0, ncells-1, npoints, randseed=randseed+dom_idx, points_seed=points_seed)
-
-            outdir_sub = os.path.join(outdir, f"domain_{dom_idx}")
-            if not os.path.isdir(outdir_sub):
-                os.mkdir(outdir_sub)
-            outfile = os.path.join(outdir_sub, "sample_mesh_gids.dat")
-            print(f"Saving sample mesh global indices to {outfile}")
-            np.savetxt(outfile, samples, fmt='%8i')
-
-
-def gen_random_samples(
-    low,
-    high,
-    numsamps,
-    randseed=0,
-    points_seed=[],
-):
-
-    rng = np.random.default_rng(seed=randseed)
-
-    all_samples = np.arange(low, high+1)
-    rng.shuffle(all_samples)
-
-    numsamps_seed = len(points_seed)
-    if numsamps_seed == 0:
-        samples = np.sort(all_samples[:numsamps])
-    else:
-        samples = points_seed
-        idx = 0
-        while len(samples) < numsamps:
-            if all_samples[idx] not in samples:
-                samples.append(all_samples[idx])
-            idx += 1
-        samples = np.sort(samples)
-
-    return samples

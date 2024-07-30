@@ -20,13 +20,13 @@ public:
 
     template<typename TimeType>
     void operator()(const pressio::ode::StepCount stepIn,
-            const TimeType /*timein*/,
-            const StateType & state)
+                    const TimeType /*timein*/,
+                    const StateType & state)
     {
         const auto step = stepIn.get();
-        if (step % sampleFreq_ == 0){
-        const std::size_t ext = state.size()*sizeof(double);
-        myfile0_.write(reinterpret_cast<const char*>(&state(0)), ext);
+        if (step % sampleFreq_ == 0) {
+            const std::size_t ext = state.size()*sizeof(double);
+            myfile0_.write(reinterpret_cast<const char*>(&state(0)), ext);
         }
     }
 
@@ -51,12 +51,12 @@ public:
     template<typename TimeType, typename ObservableType>
     std::enable_if_t< pressio::is_vector_eigen<ObservableType>::value >
     operator()(pressio::ode::StepCount step,
-            const TimeType /*timeIn*/,
-            const ObservableType & state)
+               const TimeType /*timeIn*/,
+               const ObservableType & state)
     {
-        if (step.get() % sampleFreq_ == 0){
-        const std::size_t ext = state.size()*sizeof(typename ObservableType::Scalar);
-        myfile_.write(reinterpret_cast<const char*>(&state(0)), ext);
+        if (step.get() % sampleFreq_ == 0) {
+            const std::size_t ext = state.size()*sizeof(typename ObservableType::Scalar);
+            myfile_.write(reinterpret_cast<const char*>(&state(0)), ext);
         }
     }
 

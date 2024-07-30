@@ -1,8 +1,13 @@
 import os
+from copy import deepcopy
 import struct
 from math import floor
 
 import numpy as np
+
+
+def make_empty_domain_list(ndom_list):
+    return [[[None for _ in range(ndom_list[2])] for _ in range(ndom_list[1])] for _ in range(ndom_list[0])]
 
 
 def get_nested_decomp_dims(data_list):
@@ -296,10 +301,11 @@ def calc_mesh_bounds(meshdirs):
 
 def load_meshes(
     meshdir,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     """"""
 
+    assert os.path.isdir(meshdir), f"No mesh directory at {meshdir}"
     print(f"Loading mesh from {meshdir}")
 
     # detect decomposed vs. monolithic
@@ -329,9 +335,9 @@ def load_meshes(
         return coords, coords_sub
 
     else:
+        print("Monolithic mesh detected")
         coords = load_mesh_single(meshdir)
         coords_sub = None
-        print("Monolithic mesh detected")
 
     return coords, coords_sub
 
@@ -355,7 +361,7 @@ def load_field_data(
     nvars,
     coords=None,
     meshdir=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     """Loading field data from PDA binaries
 
@@ -372,6 +378,7 @@ def load_field_data(
     """
 
 
+    assert os.path.isdir(datadir), f"No data directory found at {datadir}"
     print(f"Loading data from {datadir}")
 
     # detect monolithic vs. decomposed
@@ -424,7 +431,7 @@ def load_unified_helper(
     datadirs=None,
     nvars=None,
     dataroot=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
     # helper function for other functions that need to load mesh and data
     # checks inputs, returns list of data/meshes
@@ -449,12 +456,13 @@ def load_unified_helper(
     if meshlist is None:
         assert meshdirs is not None
         nmesh = len(meshdirs)
-        meshlist     = [None for _ in range(nmesh)]
+        meshlist_out  = [None for _ in range(nmesh)]
         meshlist_sub = [None for _ in range(nmesh)]
         for mesh_idx, meshdir in enumerate(meshdirs):
-            meshlist[mesh_idx], meshlist_sub[mesh_idx] = load_meshes(meshdir, merge_decomp=merge_decomp)
+            meshlist_out[mesh_idx], meshlist_sub[mesh_idx] = load_meshes(meshdir, merge_decomp=merge_decomp)
     else:
         nmesh = len(meshlist)
+        meshlist_out = meshlist
 
     # load data, if not provided
     if datalist is None:
@@ -471,7 +479,7 @@ def load_unified_helper(
         for data_idx, datadir in enumerate(datadirs):
             # is monolithic
             if meshlist_sub[data_idx] is None:
-                coords_in = meshlist[data_idx]
+                coords_in = meshlist_out[data_idx]
             else:
                 coords_in = meshlist_sub[data_idx]
             datalist[data_idx], datalist_sub[data_idx] = load_field_data(
@@ -482,11 +490,27 @@ def load_unified_helper(
                 meshdir=meshdirs[data_idx],
                 merge_decomp=merge_decomp,
             )
-    else:
+
+            # copy over if not merging decomposed data
+            if (meshlist_sub[data_idx] is not None) and (not merge_decomp):
+                datalist[data_idx] = deepcopy(datalist_sub[data_idx])
+
+    # only need to do anything else if we're merging decomposed data
+    elif merge_decomp and meshlist is None:
+
         ndata = len(datalist)
         assert nmesh == ndata
 
-    return meshlist, datalist
+        for data_idx, data in enumerate(datalist):
+            if isinstance(data, list):
+                _, overlap = load_info_domain(meshdirs[data_idx])
+                datalist[data_idx] = merge_domain_data(data, overlap)
+
+    else:
+        # already have datalist and meshlist, don't want to merge anything
+        pass
+
+    return meshlist_out, datalist
 
 
 def euler_calc_pressure(
@@ -497,7 +521,7 @@ def euler_calc_pressure(
     datadirs=None,
     nvars=None,
     dataroot=None,
-    merge_decomp=True,
+    merge_decomp=False,
 ):
 
     _, datalist = load_unified_helper(
@@ -561,61 +585,40 @@ def read_from_binary(infile):
 def read_runtimes(
     datadirs,
     dataroot,
-    methodlist,
 ):
 
     if isinstance(datadirs, str):
         datadirs = [datadirs]
     ndata = len(datadirs)
 
-    assert len(methodlist) == ndata
-    assert all([method in ["mono", "mult", "add"] for method in methodlist])
-
     runtimelist = [None for _ in range(ndata)]
-    niterslist = [None for _ in range(ndata)]
+    iterslist = [None for _ in range(ndata)]
+    subiterslist = [None for _ in range(ndata)]
     for data_idx, datadir in enumerate(datadirs):
 
         datafile = os.path.join(datadir, f"{dataroot}.bin")
         with open(datafile, 'rb') as f:
             contents = f.read()
 
-        ndomains = struct.unpack('Q', contents[:8])[0]
         nbytes_file = len(contents)
-        nbytes_read = 8
 
-        timelist = []
-        niters_tot = 0
+        iters_tot = 0
+        nsubiters_tot = 0
+        runtime_tot = 0.0
+        nbytes_read = 0
         while nbytes_read < nbytes_file:
 
-            niters = struct.unpack('Q', contents[nbytes_read:nbytes_read+8])[0]
+            nsubiters = struct.unpack('Q', contents[nbytes_read:nbytes_read+8])[0]
             nbytes_read += 8
-            niters_tot += niters
-            runtime_arr = np.zeros((ndomains, niters), dtype=np.float64)
+            nsubiters_tot += nsubiters
+            runtime = struct.unpack('d', contents[nbytes_read:nbytes_read+8])[0]
+            nbytes_read += 8
+            runtime_tot += runtime
 
-            for iter_idx in range(niters):
-                runtime_vals = struct.unpack('d'*ndomains, contents[nbytes_read:nbytes_read+8*ndomains])
-                runtime_arr[:, iter_idx] = np.array(runtime_vals, dtype=np.float64)
-                nbytes_read += 8*ndomains
+            iters_tot += 1
 
-            timelist.append(runtime_arr.copy())
+        iterslist[data_idx] = iters_tot
+        subiterslist[data_idx] = nsubiters_tot
+        runtimelist[data_idx] = runtime_tot
 
-        niterslist[data_idx] = niters_tot
-
-        # single-domain
-        if (len(timelist) == 1) and (timelist[0].shape == (1, 1)):
-            assert methodlist[data_idx] == "mono"
-            runtimelist[data_idx] = timelist[0][0, 0]
-
-        else:
-            assert methodlist[data_idx] in ["mult", "add"]
-            runtime_est = 0.0
-            for runtime_arr in timelist:
-                if methodlist[data_idx] == "mult":
-                    # multiplicative
-                    runtime_est += np.sum(runtime_arr)
-                else:
-                    # additive
-                    runtime_est += np.sum(np.amax(runtime_arr, axis=0))
-            runtimelist[data_idx] = runtime_est
-
-    return runtimelist, niterslist
+    return runtimelist, iterslist, subiterslist

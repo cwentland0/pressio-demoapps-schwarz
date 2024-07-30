@@ -36,10 +36,10 @@ auto read_matrix_from_binary(const std::string & fileName, int numColsToRead) {
     fin.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 
     // read 2 8-byte integer header, size matrix accordingly
-    size_t rows = {};
-    size_t cols = {};
-    fin.read((char*) (&rows), sizeof(size_t));
-    fin.read((char*) (&cols), sizeof(size_t));
+    std::size_t rows = {};
+    std::size_t cols = {};
+    fin.read((char*) (&rows), sizeof(std::size_t));
+    fin.read((char*) (&cols), sizeof(std::size_t));
     M.resize(rows, numColsToRead);
 
     // read matrix
@@ -52,7 +52,7 @@ auto read_matrix_from_binary(const std::string & fileName, int numColsToRead) {
         throw std::runtime_error("ERROR READING binary file");
     }
     else{
-        std::cerr << fin.gcount() << " bytes read\n";
+        std::cout << fin.gcount() << " bytes read\n";
     }
     fin.close();
     return M;
@@ -96,6 +96,17 @@ auto read_vector_from_ascii(const std::string & fileName)
     source.close();
 
     return v;
+}
+
+template<class MatType>
+void write_matrix_to_binary(const std::string & outfile, MatType outmat)
+{
+    std::ofstream out(outfile.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+    typename MatType::Index rows=outmat.rows(), cols=outmat.cols();
+    out.write((char*) (&rows), sizeof(typename MatType::Index));
+    out.write((char*) (&cols), sizeof(typename MatType::Index));
+    out.write((char*) outmat.data(), rows*cols*sizeof(typename MatType::Scalar) );
+    out.close();
 }
 
 // pretty much everything below this is ripped directly from pressio-tutorials
@@ -200,7 +211,7 @@ auto create_hyper_updater(
 
 // extract stencil mesh values from full-order matrix
 // rows are unrolled state vector, columns are basis/snapshot/etc. vectors
-// OperandType should really be an Eigen::Vector
+// OperandType should really be an Eigen::Matrix
 template<class OperandType, class CellGidsVectorType>
 auto reduce_matrix_on_stencil_mesh(
     const OperandType & operand,
@@ -242,6 +253,106 @@ auto reduce_vector_on_stencil_mesh(
     }
     return result;
 }
+
+// Gappy POD weighting operator passed to create_gauss_newton_solver()
+// Computes operator ([ S * Psi ]^+)^T * [ S * Psi ]^+,
+//      where S is the sample matrix and Psi is the gappy POD regressor matrix of choice
+// `nmodes` can be different than the number of modes in the trial basis
+template<class scalar_t>
+class Weigher {
+
+    using matrix_type = Eigen::Matrix<scalar_t, -1, -1, Eigen::ColMajor>;
+
+public:
+
+    Weigher(
+        const std::string & weigher_type,
+        const std::string & basisfile,
+        const std::string & samplefile,
+        const int nmodes,
+        const int numDofsPerCell)
+    {
+        namespace pdas = pdaschwarz;
+
+        m_weigher_type = weigher_type;
+
+        if (weigher_type == "identity") {
+            // nothing needed for identity
+        }
+        else if (weigher_type == "gappy_pod") {
+
+            // compute Z * Phi
+            auto basis_gpod = pdas::read_matrix_from_binary<scalar_t>(basisfile, nmodes);
+            const auto sampleGids = pdas::create_cell_gids_vector_and_fill_from_ascii(samplefile);
+            auto basis_sample = pdas::reduce_matrix_on_stencil_mesh(basis_gpod, sampleGids, numDofsPerCell);
+
+            // size matrices
+            std::size_t numsamps = sampleGids.rows();
+            m_gpod_operator.resize(nmodes, numsamps);
+
+            // compute A = pinv(Z * Phi)
+            m_gpod_operator = basis_sample.completeOrthogonalDecomposition().pseudoInverse();
+
+        }
+        else {
+            throw std::runtime_error("Invalid weigher_type: " + weigher_type);
+        }
+    }
+
+    // operator on residual
+    void operator()(const Eigen::Matrix<scalar_t, -1, 1> & operand,
+                    Eigen::Matrix<scalar_t, -1, 1> & result) const
+    {
+        if (m_weigher_type == "identity") {
+            // copy
+            result = operand;
+        }
+        else if (m_weigher_type == "gappy_pod") {
+
+            // ugly workaround for the fact that Wr and WJ are automatically sized to have numsamps rows
+            if (result.rows() != m_gpod_operator.rows()) {
+                result.resize(m_gpod_operator.rows(), result.cols());
+            }
+
+            // multiply weighting operator
+            pressio::ops::product(
+                ::pressio::nontranspose(),
+                1., m_gpod_operator, operand,
+                0., result
+            );
+        }
+    }
+
+    // operator on Jacobian
+    void operator()(const Eigen::Matrix<scalar_t, -1, -1> & operand,
+                    Eigen::Matrix<scalar_t, -1, -1> & result) const
+    {
+        if (m_weigher_type == "identity") {
+            // copy
+            result = operand;
+        }
+        else if (m_weigher_type == "gappy_pod") {
+
+            // ugly workaround for the fact that Wr and WJ are automatically sized to have numsamps rows
+            if (result.rows() != m_gpod_operator.rows()) {
+                result.resize(m_gpod_operator.rows(), result.cols());
+            }
+
+            // multiply weighting operator
+            pressio::ops::product(
+                ::pressio::nontranspose(), ::pressio::nontranspose(),
+                1., m_gpod_operator, operand,
+                0., result
+            );
+        }
+    }
+
+private:
+
+    std::string m_weigher_type;
+    matrix_type m_gpod_operator;
+
+};
 
 }
 
