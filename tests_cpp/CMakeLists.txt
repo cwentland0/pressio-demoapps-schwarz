@@ -22,6 +22,9 @@ link_libraries(stdc++fs pthread)
 # 2d problems
 # ---------------------------------------------------------
 
+add_subdirectory(eigen_2d_burgers_outflow_implicit)
+add_subdirectory(eigen_2d_burgers_outflow_implicit_schwarz)
+
 add_subdirectory(eigen_2d_euler_riemann_implicit)
 add_subdirectory(eigen_2d_euler_riemann_implicit_schwarz)
 

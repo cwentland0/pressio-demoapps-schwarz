@@ -24,11 +24,11 @@ namespace pdaschwarz {
 namespace pda = pressiodemoapps;
 namespace pode = pressio::ode;
 
-using mesh_t = pressiodemoapps::cellcentered_uniform_mesh_eigen_type;
+using mesh_t = pda::cellcentered_uniform_mesh_eigen_type;
 using euler2d_app_type =
     decltype(pda::create_problem_eigen(
             std::declval<mesh_t>(),
-            std::declval<pressiodemoapps::Euler2d>(),
+            std::declval<pda::Euler2d>(),
             std::declval<pda::InviscidFluxReconstruction>(),
             std::declval<BCFunctor<mesh_t>>(),
             std::declval<BCFunctor<mesh_t>>(),
@@ -41,7 +41,20 @@ using euler2d_app_type =
 using swe2d_app_type =
     decltype(pda::create_problem_eigen(
             std::declval<mesh_t>(),
-            std::declval<pressiodemoapps::Swe2d>(),
+            std::declval<pda::Swe2d>(),
+            std::declval<pda::InviscidFluxReconstruction>(),
+            std::declval<BCFunctor<mesh_t>>(),
+            std::declval<BCFunctor<mesh_t>>(),
+            std::declval<BCFunctor<mesh_t>>(),
+            std::declval<BCFunctor<mesh_t>>(),
+            int(), /* dummy initial */
+            std::unordered_map<std::string, typename mesh_t::scalar_type>() /* user parameters */
+        )
+    );
+using burgers2d_app_type =
+    decltype(pda::create_problem_eigen(
+            std::declval<mesh_t>(),
+            std::declval<pda::AdvectionDiffusion2d>(),
             std::declval<pda::InviscidFluxReconstruction>(),
             std::declval<BCFunctor<mesh_t>>(),
             std::declval<BCFunctor<mesh_t>>(),
