@@ -158,7 +158,7 @@ public:
         }
 
         m_nonlinSolver.setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
-        m_nonlinSolver.setStopTolerance(1e-7);
+        m_nonlinSolver.setStopTolerance(1e-5);
     }
 
     state_t & getLastStateInHistory() final { return m_stateHistVec.back(); }
@@ -490,7 +490,7 @@ public:
     {
 
         m_nonlinSolver.setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
-        m_nonlinSolver.setStopTolerance(1e-7);
+        m_nonlinSolver.setStopTolerance(1e-5);
 
     }
 
@@ -887,7 +887,7 @@ public:
             (pressio::create_gauss_newton_solver(*m_stepperHyper, *m_linSolverObjHyper, *m_weigher));
 
         m_nonlinSolverHyper->setStopCriterion(pressio::nonlinearsolvers::Stop::WhenAbsolutel2NormOfCorrectionBelowTolerance);
-        m_nonlinSolverHyper->setStopTolerance(1e-7);
+        m_nonlinSolverHyper->setStopTolerance(1e-5);
     }
 
 // TODO: to protected
